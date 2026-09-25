@@ -1,0 +1,28 @@
+{
+  "name": "@payunlock/contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./abi/*": "./abi/*.json" },
+  "scripts": {
+    "build": "hardhat build && node scripts/export-abi.mjs",
+    "typecheck": "hardhat build && tsc --noEmit",
+    "test": "hardhat test",
+    "deploy:local": "hardhat ignition deploy ignition/modules/Foundation.ts --network hardhatMainnet --deployment-id local-foundation --parameters ignition/parameters/local.json",
+    "deploy:testnet": "hardhat ignition deploy ignition/modules/Foundation.ts --network monadTestnet --deployment-id monad-testnet-foundation-v1 --parameters ignition/parameters/monad-testnet.json",
+    "deploy:mainnet": "node scripts/mainnet-gate.mjs"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox-mocha-ethers": "3.0.7",
+    "@nomicfoundation/hardhat-ignition": "3.1.8",
+    "@nomicfoundation/hardhat-ignition-ethers": "3.1.6",
+    "@nomicfoundation/ignition-core": "3.1.9",
+    "@openzeppelin/contracts": "5.6.1",
+    "@types/chai": "5.2.3",
+    "@types/mocha": "10.0.10",
+    "chai": "6.2.2",
+    "ethers": "6.17.0",
+    "hardhat": "3.17.0",
+    "mocha": "11.8.0"
+  }
+}

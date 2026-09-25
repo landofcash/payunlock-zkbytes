@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "chainId": 143,
+  "network": "monadMainnet",
+  "status": "not-deployed",
+  "deploymentId": "monad-mainnet-escrow-v1",
+  "escrow": null,
+  "deploymentBlock": null,
+  "paymentAssets": []
+}

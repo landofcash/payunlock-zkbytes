@@ -1,0 +1,15 @@
+packages:
+  - payunlock-frontend
+  - payunlock-backend
+  - payunlock-contract
+  - packages/*
+
+saveExact: true
+strictPeerDependencies: true
+autoInstallPeers: true
+allowBuilds:
+  '@reown/appkit': false
+  esbuild: true
+  keccak: true
+  protobufjs: false
+  secp256k1: true

@@ -7,3 +7,11 @@ coverage/
 !.env.example
 *.log
 doc/local/
+artifacts/
+cache/
+**/types/ethers-contracts/
+*.tsbuildinfo
+output/
+.playwright-cli/
+# Public-chain Ignition journals are durable deployment records; never ignore them.
+payunlock-contract/ignition/deployments/local-*/

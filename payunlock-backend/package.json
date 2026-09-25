@@ -1,0 +1,29 @@
+{
+  "name": "@payunlock/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../.env --import tsx --watch src/server.ts",
+    "dev:worker": "node --env-file-if-exists=../.env --import tsx src/worker.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "start": "node --env-file-if-exists=../.env dist/server.js",
+    "start:worker": "node --env-file-if-exists=../.env dist/worker.js",
+    "test": "vitest run",
+    "test:db": "node --env-file-if-exists=../.env --import tsx scripts/check-database.ts",
+    "db:migrate": "node --env-file-if-exists=../.env --import tsx src/database/migrate.ts up",
+    "db:migrate:prod": "node --env-file-if-exists=../.env dist/database/migrate.js up"
+  },
+  "dependencies": {
+    "@payunlock/api-contracts": "workspace:*",
+    "@fastify/cors": "11.3.0",
+    "fastify": "5.12.5",
+    "fastify-plugin": "6.0.0",
+    "fastify-type-provider-zod": "7.0.0",
+    "node-pg-migrate": "9.0.0",
+    "pg": "8.23.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": { "@types/pg": "8.23.1" }
+}

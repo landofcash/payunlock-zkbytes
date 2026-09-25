@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`order-bound delivery and recovery > restores both participants in empty browsers and pins a stable private content fixture 1`] = `"0xe54b52623782ae6990c6132a6e88ef852dfed544056b71b7ff7b075f93edd040"`;

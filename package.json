@@ -1,0 +1,40 @@
+{
+  "name": "payunlock",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.27.0",
+  "engines": { "node": ">=24.11.0 <25" },
+  "scripts": {
+    "env:init": "node scripts/setup.mjs",
+    "dev": "pnpm --filter @payunlock/api-contracts build && concurrently -k -n api,web \"pnpm --filter @payunlock/backend dev\" \"pnpm --filter @payunlock/frontend dev\"",
+    "dev:worker": "pnpm --filter @payunlock/backend dev:worker",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm --filter @payunlock/api-contracts build && pnpm -r typecheck",
+    "lint": "eslint .",
+    "test": "node --test scripts/rpc-probe.test.mjs && pnpm --filter @payunlock/api-contracts build && pnpm -r test",
+    "test:db": "pnpm --filter @payunlock/backend test:db",
+    "db:start": "docker compose up -d --wait postgres",
+    "db:stop": "docker compose stop postgres",
+    "db:migrate": "pnpm --filter @payunlock/backend db:migrate",
+    "db:migrate:prod": "pnpm --filter @payunlock/backend db:migrate:prod",
+    "rpc:check": "node --env-file-if-exists=.env scripts/check-rpc.mjs",
+    "rpc:check:alchemy": "node --env-file-if-exists=.env scripts/check-rpc.mjs --alchemy",
+    "storage:check": "pnpm --filter @payunlock/frontend check:storage",
+    "contract:build": "pnpm --filter @payunlock/contract build",
+    "contract:test": "pnpm --filter @payunlock/contract test",
+    "contract:deploy:local": "pnpm --filter @payunlock/contract deploy:local",
+    "contract:deploy:testnet": "pnpm --filter @payunlock/contract deploy:testnet",
+    "contract:deploy:mainnet": "pnpm --filter @payunlock/contract deploy:mainnet"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.10.0",
+    "concurrently": "10.0.5",
+    "eslint": "10.11.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.70.0",
+    "vitest": "5.0.1"
+  }
+}

@@ -1,0 +1,43 @@
+name: Foundation checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.11-bookworm
+        env:
+          POSTGRES_USER: payunlock
+          POSTGRES_DB: payunlock
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U payunlock -d payunlock"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.27.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm env:init
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm db:migrate:prod
+        env:
+          DATABASE_URL: postgresql://payunlock:ci-only-password@127.0.0.1:5434/payunlock
+      - run: pnpm test:db
+        env:
+          DATABASE_URL: postgresql://payunlock:ci-only-password@127.0.0.1:5434/payunlock
+      - run: git diff --exit-code -- payunlock-contract/abi

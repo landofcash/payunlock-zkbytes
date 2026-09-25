@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "chainId": 10143,
+  "network": "monadTestnet",
+  "status": "not-deployed",
+  "deploymentId": "monad-testnet-foundation-v1",
+  "escrow": null,
+  "deploymentBlock": null,
+  "testToken": null
+}
