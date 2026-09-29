@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ChainService, escrowInterface } from "../src/services/chain-service.js";
+import { ChainService, deployment, escrowInterface } from "../src/services/chain-service.js";
 import { lifecycleRequest, lifecycleSchema } from "../src/services/lifecycle-actions.js";
 import type { ChainSnapshot } from "../src/domain.js";
 const buyer = `0x${"11".repeat(20)}`, seller = `0x${"22".repeat(20)}`, arb = `0x${"33".repeat(20)}`, hash = `0x${"44".repeat(32)}`;
@@ -68,8 +68,10 @@ describe("lifecycle preparation boundaries", () => {
   });
   it("binds arbitration fee and rejects voluntary settlement during arbitration", async () => {
     snapshot.order.state = 4;
-    const tx = await lifecycleRequest(chain, buyer, { kind: "requestArbitration", orderId: "1", wallet: arb, expectedKeyVersion: "1", expectedFee: "25", evidence: { contentRef: reference, arbitratorEnvelope: reference.buyerEnvelope } });
-    expect(tx.value).toBe("25");
+    vi.mocked(chain.call).mockImplementation(async name => [name === "arbitrationFeeAsset" ? arb : name === "arbitratorFeeVersion" ? 1n : hash] as never);
+    const tx = await lifecycleRequest(chain, buyer, { kind: "requestArbitration", orderId: "1", wallet: arb, expectedKeyVersion: "1", expectedFee: "25",
+      ...(deployment.router ? { expectedFeeVersion: "1", expectedFeeAsset: arb } : {}), evidence: { contentRef: reference, arbitratorEnvelope: reference.buyerEnvelope } });
+    expect(tx.value).toBe(deployment.router ? "0" : "25");
     snapshot.order.state = 6;
     await expect(lifecycleRequest(chain, buyer, { kind: "confirmReceipt", orderId: "1" })).rejects.toThrow();
     await expect(lifecycleRequest(chain, seller, { kind: "refundDisputedOrder", orderId: "1" })).rejects.toThrow();
