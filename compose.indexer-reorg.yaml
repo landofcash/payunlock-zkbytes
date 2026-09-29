@@ -1,0 +1,8 @@
+services:
+  indexer:
+    environment:
+      ENVIO_HASURA: "false"
+      ENVIO_PG_SCHEMA: ${ENVIO_REORG_SCHEMA:?Use pnpm indexer:test:reorg}
+    volumes:
+      - ./output/phase4-reorg:/workspace/payunlock-indexer
+      - indexer-modules:/workspace/payunlock-indexer/node_modules

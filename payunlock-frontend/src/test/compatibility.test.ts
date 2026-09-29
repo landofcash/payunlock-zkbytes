@@ -22,8 +22,7 @@ describe("published SDK signer compatibility", () => {
             ? "0x1234"
             : otherWallet.signMessage(message);
         },
-        async disconnect() {},
-      };
+        async disconnect() {} };
       await expect(
         checkCompatibility(session, () => true),
       ).rejects.toMatchObject({ kind });
@@ -41,8 +40,7 @@ describe("published SDK signer compatibility", () => {
         messages.push(message);
         return wallet.signMessage(message);
       },
-      async disconnect() {},
-    };
+      async disconnect() {} };
     expect(await checkCompatibility(session, () => true)).toBe(true);
     expect(messages).toHaveLength(2);
     expect(messages[0]).toBe(messages[1]);
@@ -60,8 +58,7 @@ describe("published SDK signer compatibility", () => {
         current = false;
         return wallet.signMessage(message);
       },
-      async disconnect() {},
-    };
+      async disconnect() {} };
     await expect(checkCompatibility(session, () => current)).rejects.toThrow(
       "wrong-account",
     );

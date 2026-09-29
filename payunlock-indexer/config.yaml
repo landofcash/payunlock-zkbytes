@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+name: payunlock
+description: PayUnlock Monad Testnet escrow history
+address_format: lowercase
+rollback_on_reorg: true
+field_selection:
+  transaction_fields:
+    - hash
+contracts:
+  - name: PayUnlock
+    abi_file_path: ../payunlock-contract/abi/PayUnlock.json
+    events:
+      - event: StorageServiceAdded
+      - event: BatchLimitChanged
+      - event: TimingBoundsChanged
+      - event: AssetAllowed
+      - event: ReceiveAuthorizationAssetConfigured
+      - event: AuthorizationRouterSet
+      - event: ServiceFeeConfigured
+      - event: PlacementFeeConfigured
+      - event: SellerFeeCapConfigured
+      - event: FeeAccrued
+      - event: FeesClaimed
+      - event: ArbitrationFeeSet
+      - event: ArbitrationFeeAssetSet
+      - event: DefaultsChanged
+      - event: ProductConfigured
+      - event: Purchased
+      - event: DeliveryReserved
+      - event: RecordPublished
+      - event: StateChanged
+      - event: Settled
+      - event: ArbitratorConfigured
+      - event: ArbitrationAssigned
+      - event: EvidencePublished
+      - event: EvidenceRequested
+      - event: OwnershipTransferStarted
+      - event: OwnershipTransferred
+chains:
+  - id: 10143
+    start_block: 66424798
+    max_reorg_depth: 200
+    contracts:
+      - name: PayUnlock
+        address: "0xe51b90b642d1eeb35a2b71b8d026f1bc6a216e33"

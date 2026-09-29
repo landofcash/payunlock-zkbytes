@@ -1,0 +1,863 @@
+{
+  "contractName": "PayUnlockAuthorizationRouter",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "contract IAuthorizationEscrow",
+          "name": "escrow_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "ECDSAInvalidSignature",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "length",
+          "type": "uint256"
+        }
+      ],
+      "name": "ECDSAInvalidSignatureLength",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "s",
+          "type": "bytes32"
+        }
+      ],
+      "name": "ECDSAInvalidSignatureS",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InexactTransfer",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidIntent",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidShortString",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ReentrancyGuardReentrantCall",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        }
+      ],
+      "name": "SafeERC20FailedOperation",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "str",
+          "type": "string"
+        }
+      ],
+      "name": "StringTooLong",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "actor",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "nonce",
+          "type": "bytes32"
+        }
+      ],
+      "name": "ActionCanceled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "actor",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "nonce",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes4",
+          "name": "selector",
+          "type": "bytes4"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "actionHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "ActionExecuted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [],
+      "name": "EIP712DomainChanged",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "ACTION_TYPEHASH",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ARBITRATION_TYPEHASH",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "PURCHASE_TYPEHASH",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "actor",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "nonce",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validAfter",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validBefore",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.ActionAuthorization",
+          "name": "authorization",
+          "type": "tuple"
+        },
+        {
+          "internalType": "bytes",
+          "name": "actionData",
+          "type": "bytes"
+        }
+      ],
+      "name": "actionDigest",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "orderId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "arbitrator",
+              "type": "address"
+            },
+            {
+              "internalType": "uint64",
+              "name": "keyVersion",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "feeVersion",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint256",
+              "name": "fee",
+              "type": "uint256"
+            },
+            {
+              "components": [
+                {
+                  "components": [
+                    {
+                      "internalType": "uint32",
+                      "name": "serviceId",
+                      "type": "uint32"
+                    },
+                    {
+                      "internalType": "uint64",
+                      "name": "preparedAt",
+                      "type": "uint64"
+                    },
+                    {
+                      "internalType": "bytes32",
+                      "name": "creator",
+                      "type": "bytes32"
+                    },
+                    {
+                      "internalType": "bytes",
+                      "name": "buyerEnvelope",
+                      "type": "bytes"
+                    },
+                    {
+                      "internalType": "bytes",
+                      "name": "sellerEnvelope",
+                      "type": "bytes"
+                    },
+                    {
+                      "internalType": "bytes32",
+                      "name": "contentHash",
+                      "type": "bytes32"
+                    }
+                  ],
+                  "internalType": "struct PayUnlockTypes.Reference",
+                  "name": "contentRef",
+                  "type": "tuple"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "arbitratorEnvelope",
+                  "type": "bytes"
+                }
+              ],
+              "internalType": "struct PayUnlockTypes.Evidence",
+              "name": "evidence",
+              "type": "tuple"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.ArbitrationIntent",
+          "name": "intent",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "actor",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validAfter",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validBefore",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "salt",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.Authorization",
+          "name": "auth",
+          "type": "tuple"
+        }
+      ],
+      "name": "arbitrationNonce",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "nonce",
+          "type": "bytes32"
+        }
+      ],
+      "name": "cancelActionNonce",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "eip712Domain",
+      "outputs": [
+        {
+          "internalType": "bytes1",
+          "name": "fields",
+          "type": "bytes1"
+        },
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "chainId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "verifyingContract",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "salt",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "extensions",
+          "type": "uint256[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "escrow",
+      "outputs": [
+        {
+          "internalType": "contract IAuthorizationEscrow",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "actor",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "nonce",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validAfter",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validBefore",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.ActionAuthorization",
+          "name": "authorization",
+          "type": "tuple"
+        },
+        {
+          "internalType": "bytes",
+          "name": "actionData",
+          "type": "bytes"
+        },
+        {
+          "internalType": "bytes",
+          "name": "signature",
+          "type": "bytes"
+        }
+      ],
+      "name": "executeAuthorized",
+      "outputs": [
+        {
+          "internalType": "bytes",
+          "name": "",
+          "type": "bytes"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "actor",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "nonce",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validAfter",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validBefore",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.ActionAuthorization",
+          "name": "authorization",
+          "type": "tuple"
+        },
+        {
+          "internalType": "bytes",
+          "name": "actionData",
+          "type": "bytes"
+        }
+      ],
+      "name": "executeDirect",
+      "outputs": [
+        {
+          "internalType": "bytes",
+          "name": "",
+          "type": "bytes"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes",
+          "name": "actionData",
+          "type": "bytes"
+        }
+      ],
+      "name": "isAllowedAction",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "seller",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "productKey",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "requestId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "expectedCheckoutHash",
+              "type": "bytes32"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "nonce",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "publicKey",
+                  "type": "bytes32"
+                }
+              ],
+              "internalType": "struct PayUnlockTypes.Receiving",
+              "name": "receiving",
+              "type": "tuple"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.PurchaseIntent",
+          "name": "intent",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "actor",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validAfter",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validBefore",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "salt",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.Authorization",
+          "name": "auth",
+          "type": "tuple"
+        }
+      ],
+      "name": "purchaseNonce",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "seller",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "productKey",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "requestId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "expectedCheckoutHash",
+              "type": "bytes32"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "nonce",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "publicKey",
+                  "type": "bytes32"
+                }
+              ],
+              "internalType": "struct PayUnlockTypes.Receiving",
+              "name": "receiving",
+              "type": "tuple"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.PurchaseIntent",
+          "name": "intent",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "actor",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validAfter",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validBefore",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "salt",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.Authorization",
+          "name": "auth",
+          "type": "tuple"
+        }
+      ],
+      "name": "purchaseWithAuthorization",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "orderId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "arbitrator",
+              "type": "address"
+            },
+            {
+              "internalType": "uint64",
+              "name": "keyVersion",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "feeVersion",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint256",
+              "name": "fee",
+              "type": "uint256"
+            },
+            {
+              "components": [
+                {
+                  "components": [
+                    {
+                      "internalType": "uint32",
+                      "name": "serviceId",
+                      "type": "uint32"
+                    },
+                    {
+                      "internalType": "uint64",
+                      "name": "preparedAt",
+                      "type": "uint64"
+                    },
+                    {
+                      "internalType": "bytes32",
+                      "name": "creator",
+                      "type": "bytes32"
+                    },
+                    {
+                      "internalType": "bytes",
+                      "name": "buyerEnvelope",
+                      "type": "bytes"
+                    },
+                    {
+                      "internalType": "bytes",
+                      "name": "sellerEnvelope",
+                      "type": "bytes"
+                    },
+                    {
+                      "internalType": "bytes32",
+                      "name": "contentHash",
+                      "type": "bytes32"
+                    }
+                  ],
+                  "internalType": "struct PayUnlockTypes.Reference",
+                  "name": "contentRef",
+                  "type": "tuple"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "arbitratorEnvelope",
+                  "type": "bytes"
+                }
+              ],
+              "internalType": "struct PayUnlockTypes.Evidence",
+              "name": "evidence",
+              "type": "tuple"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.ArbitrationIntent",
+          "name": "intent",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "actor",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validAfter",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validBefore",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "salt",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signature",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct PayUnlockAuthorizationRouter.Authorization",
+          "name": "auth",
+          "type": "tuple"
+        }
+      ],
+      "name": "requestArbitrationWithAuthorization",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "name": "usedActionNonces",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}

@@ -4,8 +4,7 @@ import {
   encodeBase32,
   encodeBase64,
   randomBytes,
-  x25519PublicKeyFromPrivate,
-} from "@zkbytes/sdk";
+  x25519PublicKeyFromPrivate } from "@zkbytes/sdk";
 import { createReceiveCard } from "@/exchange/receive-card";
 import {
   sealSeed,
@@ -13,8 +12,7 @@ import {
   sealedSeedLink,
   sealedSeedFragment,
   parseSealedSeedFragment,
-  SEALED_SEED_FRAGMENT_LENGTH,
-} from "@/exchange/sealed-seed-v2";
+  SEALED_SEED_FRAGMENT_LENGTH } from "@/exchange/sealed-seed-v2";
 
 async function fixture() {
   const privateKey = randomBytes(32);
@@ -28,8 +26,7 @@ async function fixture() {
     card,
     seed,
     envelope,
-    fragment: sealedSeedFragment(envelope),
-  };
+    fragment: sealedSeedFragment(envelope) };
 }
 
 describe("compact sealed seeds", () => {
@@ -91,8 +88,7 @@ describe("compact sealed seeds", () => {
         openSealedSeed(
           sealedSeedFragment({
             ...envelope,
-            recipientPublicKey: otherPublicKey,
-          }),
+            recipientPublicKey: otherPublicKey }),
           otherKey,
         ),
       ).rejects.toThrow();

@@ -4,16 +4,14 @@ import {
   mergeIdentities,
   parseIdentityBackup,
   serializeIdentityBackup,
-  type SavedIdentity,
-} from "@/exchange/saved-identities";
+  type SavedIdentity } from "@/exchange/saved-identities";
 
 const identity: SavedIdentity = {
   walletAddress: "0x" + "a".repeat(40),
   walletKind: "metamask",
   label: "Personal Key",
   publicKey: "E/frDPU+6KR8X6eFQ95jCOwDiIH1CCwoRmNqz+IxoyI=",
-  profile: IDENTITY_PROFILE,
-};
+  profile: IDENTITY_PROFILE };
 it("round trips only identity metadata and deduplicates by wallet and exact label", () => {
   const text = serializeIdentityBackup([identity]);
   expect(parseIdentityBackup(text)).toEqual([identity]);
@@ -33,8 +31,7 @@ it("rejects unknown fields, private keys, invalid profiles and oversized or malf
   const envelope = {
     format: "zkbytes-identities",
     version: 1,
-    identities: [identity],
-  };
+    identities: [identity] };
   for (const invalid of [
     { ...envelope, version: 2 },
     { ...envelope, privateKey: "secret" },

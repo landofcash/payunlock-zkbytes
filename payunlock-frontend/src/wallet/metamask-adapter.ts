@@ -9,6 +9,7 @@ import type {
 } from "./types";
 import { WalletError } from "./errors";
 import { sendReviewedTransaction } from "./transactions";
+import { validateTokenAuthorization } from "./typed-data";
 import { walletNetwork } from "@/config/wallet";
 
 let clientPromise: Promise<MetamaskConnectEVM> | undefined;
@@ -152,6 +153,16 @@ export function createMetaMaskAdapter(
           await verifyAccount(expected, version);
           if (typeof signature !== "string")
             throw new WalletError("unsupported");
+          return signature;
+        },
+        async signTypedData(request) {
+          if (!connected || chainId?.toLowerCase() !== walletNetwork.chainId) throw new WalletError("network");
+          const expected = address, version = revision;
+          await verifyAccount(expected, version);
+          const { domain, types, primaryType, message } = validateTokenAuthorization(request, expected);
+          const signature = await provider.request({ method: "eth_signTypedData_v4", params: [expected, JSON.stringify({ domain, types, primaryType, message })] });
+          await verifyAccount(expected, version);
+          if (typeof signature !== "string") throw new WalletError("unsupported");
           return signature;
         },
         async disconnect() {

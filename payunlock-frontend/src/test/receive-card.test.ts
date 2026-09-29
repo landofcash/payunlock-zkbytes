@@ -7,8 +7,7 @@ import {
   receiveCardMessage,
   receiveLink,
   serializeReceiveCard,
-  signReceiveCard,
-} from "@/exchange/receive-card";
+  signReceiveCard } from "@/exchange/receive-card";
 import { prepareMessage } from "@/exchange/send";
 import { ZkbytesClient } from "@zkbytes/sdk";
 const key = "E/frDPU+6KR8X6eFQ95jCOwDiIH1CCwoRmNqz+IxoyI=";
@@ -56,8 +55,7 @@ it("verifies signed cards and sends to the endorsed key without changing item fo
   expect(signed.endorsement?.walletAddress).toBe(wallet.address.toLowerCase());
   const client = new ZkbytesClient({
     apiOrigin: "https://api.test",
-    downloadOrigin: "https://files.test",
-  });
+    downloadOrigin: "https://files.test" });
   const candidate = await prepareMessage(
     client,
     "Signed recipient",
@@ -116,8 +114,7 @@ it("discards stale signing results and wipes supplied byte signatures", async ()
         signMessage: async () => {
           current = false;
           return bytes;
-        },
-      },
+        } },
       () => current,
     ),
   ).rejects.toThrow("Session changed");

@@ -11,10 +11,10 @@ const pool = new Pool({ connectionString: config.DATABASE_URL });
 const schema = `test_foundation_${randomBytes(8).toString("hex")}`;
 const options = { databaseUrl: config.DATABASE_URL, dir: fileURLToPath(new URL("../migrations/", import.meta.url)), schema, createSchema: true, migrationsTable: "pgmigrations", log: () => {}, logger: { info: () => {}, warn: () => {}, error: () => {} } };
 try {
-  await runner({ ...options, direction: "up" });
+  const applied = await runner({ ...options, direction: "up" });
   assert.equal((await pool.query(`SELECT value FROM "${schema}".payunlock_metadata WHERE key = 'foundation_version'`)).rows[0].value, "1");
   assert.equal((await runner({ ...options, direction: "up" })).length, 0);
-  await runner({ ...options, direction: "down", count: 1 });
+  await runner({ ...options, direction: "down", count: applied.length });
   assert.equal((await pool.query("SELECT to_regclass($1) AS name", [`${schema}.payunlock_metadata`])).rows[0].name, null);
   await runner({ ...options, direction: "up" });
   const app = buildApp({ ...config, LOG_LEVEL: "silent" });

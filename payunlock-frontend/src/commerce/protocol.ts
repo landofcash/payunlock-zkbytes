@@ -2,6 +2,8 @@ import { z } from "zod";
 import { canonicalTimestamp } from "@zkbytes/sdk";
 import { clearItemKeys, deriveItemKeys, normalizeAndVerifyMasterSignature, encodeBase64, decodeBase64, randomBytes, sealSeed, openSealedSeed, prepareItem, decryptStorageItem, KEY_DERIVATION_PROFILE, validateX25519PublicKey, validateSigningDescriptor, type MasterMessageSigner, type StorageItem, type ZkbytesClient } from "@zkbytes/sdk";
 import { canonical, commitment, strictJson, utf8 } from "@/crypto/encoding";
+import type { ItemKeyPair } from "@zkbytes/sdk";
+import { prepareOfferItem } from "./offer-item";
 
 const address = z.string().regex(/^0x[0-9a-f]{40}$/);
 const uint = z.string().regex(/^(0|[1-9][0-9]*)$/).refine(x => BigInt(x) < 2n ** 256n);
@@ -19,22 +21,28 @@ export const OpeningSchema = z.strictObject({ version: z.literal(1), order: Orde
 export type Opening = z.infer<typeof OpeningSchema>;
 // Let the SDK validate its exact creator scheme and canonical public-key encoding.
 const DescriptorSchema = z.unknown().transform(value => validateSigningDescriptor(value));
-export const RecordSchema = z.strictObject({ version: z.literal(1), order: OrderSchema, kind: OpeningSchema.shape.kind, sender: address, turn: uint, service: z.string().min(1).max(80), profile: z.literal(KEY_DERIVATION_PROFILE), preparedAt: z.string(), expiresAt: z.string(), creator: DescriptorSchema, buyerEnvelope: z.string(), sellerEnvelope: z.string(), contentHash: hash });
+export const RecordSchema = z.strictObject({ version: z.literal(2), order: OrderSchema, kind: OpeningSchema.shape.kind, sender: address, turn: uint, serviceId: z.number().int().min(1).max(4294967295), profile: z.literal(KEY_DERIVATION_PROFILE), preparedAt: z.string(), expiresAt: z.string(), creator: DescriptorSchema, buyerEnvelope: z.string(), sellerEnvelope: z.string(), contentHash: hash });
 export type DeliveryRecord = z.infer<typeof RecordSchema>;
 export type PreparedDelivery = { record: DeliveryRecord; recordHash: string; item: StorageItem; opening: Opening };
-export type Service = { id: string; client: ZkbytesClient; maxRetentionSeconds: number };
+export type Service = { id: number; client: ZkbytesClient; maxRetentionSeconds: number };
 export const RETENTION_SECONDS = 365 * 24 * 60 * 60;
 
 export function newReceivingContext(deployment: Order["deployment"], account: string): ReceivingContext {
   return ReceivingContextSchema.parse({ version: 1, deployment, account: account.toLowerCase(), nonce: `0x${Array.from(randomBytes(32), x => x.toString(16).padStart(2, "0")).join("")}` });
 }
+// The catalog UUID is encoded in the existing nonce field. Purchased contexts
+// remain byte-for-byte compatible with the contract codec and legacy offers.
+export function newOfferReceivingContext(deployment: Order["deployment"], account: string, offerId: string): ReceivingContext {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(offerId)) throw new Error("Invalid offer ID.");
+  return ReceivingContextSchema.parse({ version: 1, deployment, account: account.toLowerCase(), nonce: `0x${offerId.replaceAll("-", "").toLowerCase().padStart(64, "0")}` });
+}
 export function receivingMessage(context: ReceivingContext) {
   return `PayUnlock receiving identity v1\n${canonical(ReceivingContextSchema.parse(context))}\nRestore my encryption key. No transaction is requested.`;
 }
-export async function restoreReceiving(context: ReceivingContext, signer: MasterMessageSigner, isCurrent: () => boolean, expectedPublicKey?: string) {
+export async function restoreReceivingKeys(context: ReceivingContext, signer: MasterMessageSigner & { signReceivingIdentity?(message: string): Promise<string> }, isCurrent: () => boolean, expectedPublicKey?: string): Promise<ItemKeyPair> {
   const parsed = ReceivingContextSchema.parse(context);
   if (signer.address.toLowerCase() !== parsed.account || !isCurrent()) throw new Error("Wrong receiving account or session.");
-  const message = receivingMessage(parsed), supplied = await signer.signMessage(message);
+  const message = receivingMessage(parsed), supplied = await (signer.signReceivingIdentity ? signer.signReceivingIdentity(message) : signer.signMessage(message));
   let verified: Uint8Array | undefined;
   try {
     if (!isCurrent()) throw new Error("Session changed.");
@@ -43,13 +51,18 @@ export async function restoreReceiving(context: ReceivingContext, signer: Master
     try {
       const publicKey = encodeBase64(keys.encryptionPublicKey);
       if (!isCurrent() || (expectedPublicKey && expectedPublicKey !== publicKey)) throw new Error("Restored receiving key does not match the order.");
-      return { context: parsed, publicKey, privateKey: keys.encryptionPrivateKey.slice() };
-    } finally { clearItemKeys(keys); }
+      return keys;
+    } catch (error) { clearItemKeys(keys); throw error; }
   } finally { verified?.fill(0); if (supplied instanceof Uint8Array) supplied.fill(0); }
+}
+export async function restoreReceiving(context: ReceivingContext, signer: MasterMessageSigner, isCurrent: () => boolean, expectedPublicKey?: string) {
+  const keys = await restoreReceivingKeys(context, signer, isCurrent, expectedPublicKey);
+  try { return { context: ReceivingContextSchema.parse(context), publicKey: encodeBase64(keys.encryptionPublicKey), privateKey: keys.encryptionPrivateKey.slice() }; }
+  finally { clearItemKeys(keys); }
 }
 export const termsHash = (terms: Order["terms"]) => commitment("payunlock-terms-v1", TermsSchema.parse(terms));
 export const contentHash = (opening: Opening) => commitment("payunlock-content-v1", OpeningSchema.parse(opening));
-export const recordHash = (record: DeliveryRecord) => commitment("payunlock-record-v1", RecordSchema.parse(record));
+export const recordHash = (record: DeliveryRecord) => commitment("payunlock-record-v2", RecordSchema.parse(record));
 
 function validateOrder(input: Order) {
   const order = OrderSchema.parse(input);
@@ -66,7 +79,7 @@ export function expiration(preparedAt: number, latestPublicationSeconds: bigint,
   if (latestPublicationSeconds < BigInt(Math.floor(preparedAt / 1000)) || reviewStart + BigInt(terms.reviewWindow) >= BigInt(Math.floor(expires / 1000))) throw new Error("Known delivery/review window exceeds evidence retention.");
   return canonicalTimestamp(new Date(expires));
 }
-export async function prepareDelivery(input: { order: Order; payload: Opening["payload"]; kind?: Opening["kind"]; turn?: string; signer: MasterMessageSigner; service: Service; latestPublicationSeconds: bigint; isCurrent: () => boolean; now?: number }): Promise<PreparedDelivery> {
+export async function prepareDelivery(input: { order: Order; payload: Opening["payload"]; kind?: Opening["kind"]; turn?: string; signer: MasterMessageSigner; service: Service; latestPublicationSeconds: bigint; isCurrent: () => boolean; now?: number; offerKeys?: ItemKeyPair }): Promise<PreparedDelivery> {
   const order = validateOrder(input.order), now = Math.floor((input.now ?? Date.now()) / 1000) * 1000;
   const sender = input.signer.address.toLowerCase(), kind = input.kind ?? "delivery";
   if (sender !== order.seller.context.account && (kind === "delivery" || sender !== order.buyer.context.account)) throw new Error("Wrong sender.");
@@ -76,13 +89,19 @@ export async function prepareDelivery(input: { order: Order; payload: Opening["p
   const expiresAt = expiration(now, input.latestPublicationSeconds, order.terms, input.service.maxRetentionSeconds);
   const check = () => { if (!input.isCurrent()) throw new Error("Session changed."); };
   check();
-  const prepared = await prepareItem({ plaintext, expiresAt, managers: [], recipientPublicKeys: [order.buyer.publicKey, order.seller.publicKey], signer: { address: sender, async signMessage(message) { check(); const signature = await input.signer.signMessage(message); if (!input.isCurrent()) { if (signature instanceof Uint8Array) signature.fill(0); check(); } return signature; } } });
+  if (input.offerKeys && kind !== "delivery") throw new Error("Offer keys are only supported for seller deliveries.");
+  const offerKeys = kind === "delivery" ? input.offerKeys ?? await restoreReceivingKeys(order.seller.context, input.signer, input.isCurrent, order.seller.publicKey) : undefined;
+  let prepared: { item: StorageItem; keys?: ItemKeyPair } | undefined;
   try {
+    if (offerKeys && encodeBase64(offerKeys.encryptionPublicKey) !== order.seller.publicKey) throw new Error("Offer key does not match the purchased seller identity.");
+    prepared = offerKeys
+      ? { item: await prepareOfferItem({ plaintext, expiresAt, keys: offerKeys, buyerPublicKey: order.buyer.publicKey, isCurrent: input.isCurrent }) }
+      : await prepareItem({ plaintext, expiresAt, managers: [], recipientPublicKeys: [order.buyer.publicKey, order.seller.publicKey], signer: { address: sender, async signMessage(message) { check(); const signature = await input.signer.signMessage(message); if (!input.isCurrent()) { if (signature instanceof Uint8Array) signature.fill(0); check(); } return signature; } } });
     check();
-    const record = RecordSchema.parse({ version: 1, order, kind, sender, turn: opening.turn, service: input.service.id, profile: KEY_DERIVATION_PROFILE, preparedAt: new Date(now).toISOString(), expiresAt, creator: prepared.item.creator, buyerEnvelope: encodeBase64(await sealSeed(prepared.item.seed, order.buyer.publicKey)), sellerEnvelope: encodeBase64(await sealSeed(prepared.item.seed, order.seller.publicKey)), contentHash: contentHash(opening) });
+    const record = RecordSchema.parse({ version: 2, order, kind, sender, turn: opening.turn, serviceId: input.service.id, profile: KEY_DERIVATION_PROFILE, preparedAt: new Date(now).toISOString(), expiresAt, creator: prepared.item.creator, buyerEnvelope: encodeBase64(await sealSeed(prepared.item.seed, order.buyer.publicKey)), sellerEnvelope: encodeBase64(await sealSeed(prepared.item.seed, order.seller.publicKey)), contentHash: contentHash(opening) });
     check();
     return { record, recordHash: recordHash(record), item: prepared.item, opening };
-  } finally { clearItemKeys(prepared.keys); }
+  } finally { if (prepared?.keys) clearItemKeys(prepared.keys); if (offerKeys && !input.offerKeys) clearItemKeys(offerKeys); }
 }
 
 export async function openDelivery(input: { record: DeliveryRecord; expectedRecordHash: string; order: Order; role: "buyer" | "seller"; privateKey: Uint8Array; services: readonly Service[]; isCurrent: () => boolean }): Promise<Opening> {
@@ -92,7 +111,7 @@ export async function openDelivery(input: { record: DeliveryRecord; expectedReco
   if (recordHash(record) !== input.expectedRecordHash || canonical(record.order) !== canonical(input.order)) throw new Error("Delivery commitment/order mismatch.");
   const preparedAt = Date.parse(record.preparedAt);
   if (!Number.isFinite(preparedAt) || canonicalTimestamp(new Date(preparedAt + RETENTION_SECONDS * 1000)) !== record.expiresAt) throw new Error("Evidence retention policy mismatch.");
-  const service = input.services.find(value => value.id === record.service);
+  const service = input.services.find(value => value.id === record.serviceId);
   if (!service) throw new Error("Unknown storage service/profile.");
   if (!Number.isFinite(Date.parse(record.expiresAt)) || Date.parse(record.expiresAt) <= Date.now()) throw new Error("Evidence expired; wallet recovery cannot restore it.");
   const seed = await openSealedSeed(decodeBase64(input.role === "buyer" ? record.buyerEnvelope : record.sellerEnvelope, 65), input.privateKey);
@@ -107,7 +126,7 @@ export async function openDelivery(input: { record: DeliveryRecord; expectedReco
   return opening;
 }
 
-export function publishEligibility(record: PreparedDelivery, state: { commitment: string; finalizedSuccessfulTx1: boolean; canceled: boolean; deadline: bigint; chainTime: bigint }) {
-  if (!state.finalizedSuccessfulTx1 || state.commitment !== record.recordHash || recordHash(record.record) !== record.recordHash) throw new Error("Successful finalized TX1 is required.");
+export function publishEligibility(record: PreparedDelivery, state: { finalizedSuccessfulTx1: boolean; canceled: boolean; deadline: bigint; chainTime: bigint }) {
+  if (!state.finalizedSuccessfulTx1 || recordHash(record.record) !== record.recordHash) throw new Error("Successful finalized TX1 is required.");
   if (state.canceled || state.chainTime >= state.deadline) throw new Error("Publication is permanently unavailable; check refund eligibility.");
 }

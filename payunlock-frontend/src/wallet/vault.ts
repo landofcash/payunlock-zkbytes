@@ -8,6 +8,13 @@ export const DERIVATION_PATH = "m/44'/60'/0'/0/0";
 const SecretSchema = z.strictObject({ privateKey: z.string().regex(/^0x[\da-f]{64}$/i), mnemonic: z.string().nullable(), path: z.literal(DERIVATION_PATH) });
 export type VaultSecret = z.infer<typeof SecretSchema>;
 export type VaultRecord = { version: 1; address: string; envelope: PasswordEnvelope };
+export const VAULT_EVENT = "payunlock:vault-changed", VAULT_CHANGE_KEY = "payunlock.vault-change";
+function changed(address: string, kind: "selection" | "password" | "removal") {
+  if (typeof window === "undefined") return;
+  const detail = { address, kind, revision: crypto.randomUUID() };
+  window.dispatchEvent(new CustomEvent(VAULT_EVENT, { detail }));
+  try { localStorage.setItem(VAULT_CHANGE_KEY, JSON.stringify(detail)); } catch { /* Same-tab revocation still applies. */ }
+}
 const binding = (address: string) => ({ domain: "payunlock-wallet-v1", address: getAddress(address).toLowerCase(), path: DERIVATION_PATH });
 export class WalletVault {
   constructor(private readonly store: LocalStore) {}
@@ -26,11 +33,48 @@ export class WalletVault {
     await this.store.compareAndSwap(`wallet:${address}`, undefined, record);
     // One selected wallet, while retaining other imported records.
     await this.store.put("wallet:selected", address);
+    changed(address, "selection");
     return address;
   }
   async selected(): Promise<string | null> {
     const value = await this.store.get("wallet:selected");
     return typeof value === "string" ? getAddress(value) : null;
+  }
+  async list(): Promise<string[]> {
+    const selected = await this.selected();
+    const keys = this.store.keys ? await this.store.keys() : selected ? [`wallet:${selected}`] : [];
+    const values = await Promise.all(keys.filter(key => /^wallet:0x[\da-f]{40}$/i.test(key)).map(async key => {
+      const record = await this.store.get(key) as VaultRecord | undefined;
+      return record?.version === 1 && key === `wallet:${record.address}` ? getAddress(record.address) : null;
+    }));
+    return values.filter((v): v is string => !!v).sort();
+  }
+  async select(address: string) {
+    address = getAddress(address);
+    if (!await this.store.get(`wallet:${address}`)) throw new Error("Wallet not found.");
+    await this.store.put("wallet:selected", address); changed(address, "selection");
+  }
+  async changePassword(address: string, currentPassword: string, nextPassword: string) {
+    address = getAddress(address);
+    const record = await this.store.get(`wallet:${address}`), secret = await this.export(address, currentPassword);
+    try {
+      const envelope = await encryptWithPassword(JSON.stringify(secret), nextPassword, binding(address));
+      await this.store.compareAndSwap(`wallet:${address}`, record, { version: 1, address, envelope });
+      changed(address, "password");
+    } finally { secret.privateKey = ""; secret.mnemonic = null; }
+  }
+  async remove(address: string, password: string) {
+    address = getAddress(address);
+    const record = await this.store.get(`wallet:${address}`), secret = await this.export(address, password);
+    secret.privateKey = ""; secret.mnemonic = null;
+    await this.store.compareAndSwap(`wallet:${address}`, record, undefined);
+    changed(address, "removal");
+    // Recovery journals and receiving identity metadata deliberately remain intact.
+    if (await this.selected() === address) {
+      const next = (await this.list())[0];
+      await this.store.compareAndSwap("wallet:selected", address, next);
+    }
+    changed(address, "removal");
   }
   async export(address: string, password: string): Promise<VaultSecret> {
     const value = await this.store.get(`wallet:${getAddress(address)}`);

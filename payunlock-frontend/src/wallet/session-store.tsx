@@ -30,6 +30,12 @@ import {
   type SavedIdentity,
 } from "@/exchange/saved-identities";
 import type { LabWalletAdapter, LabWalletSession } from "./types";
+import { clearItemKeys, encodeBase64, type ItemKeyPair } from "@zkbytes/sdk";
+import { canonical } from "@/crypto/encoding";
+import { restoreReceivingKeys, type ReceivingContext } from "@/commerce/protocol";
+import { VAULT_EVENT, VAULT_CHANGE_KEY } from "./vault";
+import { LAST_USED_EVENT, LAST_USED_KEY, readLastUsedAccount, rememberLastUsedAccount, type LastUsedAccount } from "./last-used";
+export const IDLE_LOCK_MS = 2 * 60 * 1000;
 
 type Compatibility =
   "untested" | "checking" | "compatible" | "nondeterministic" | WalletErrorKind;
@@ -43,6 +49,7 @@ export type WalletActivity = WalletAction & {
   phase: "approval" | "processing";
 };
 type SessionState = {
+  lastUsed: LastUsedAccount | null;
   walletActivity: WalletActivity | null;
   savedIdentities: SavedIdentity[];
   storageError: string | null;
@@ -54,6 +61,8 @@ type SessionState = {
     publicKey: string,
     operation: (privateKey: Uint8Array, isCurrent: () => boolean) => Promise<T>,
   ): Promise<T>;
+  runOfferKeysOperation<T>(context: ReceivingContext, expectedPublicKey: string | undefined,
+    operation: (keys: ItemKeyPair, session: LabWalletSession, isCurrent: () => boolean) => Promise<T>): Promise<T>;
   runOperation<T>(
     operation: (
       session: LabWalletSession,
@@ -79,6 +88,7 @@ type SessionState = {
 };
 const Context = createContext<SessionState | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }) {
+  const [lastUsed, setLastUsed] = useState(readLastUsedAccount);
   const [saved, setSaved] = useState(() => {
     try {
       return {
@@ -120,8 +130,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     null,
   );
   const privateIdentities = useRef<ReceivingIdentity[]>([]);
+  const offerKeys = useRef(new Map<string, ItemKeyPair>());
   const [identities, setIdentities] = useState<SessionState["identities"]>([]);
   function clearPrivateIdentities() {
+    offerKeys.current.forEach(clearItemKeys);
+    offerKeys.current.clear();
     setWalletActivity(null);
     setIdentityEpoch((value) => value + 1);
     privateIdentities.current.forEach((identity) =>
@@ -172,18 +185,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           });
         return signature;
       },
+      signTypedData: selected.signTypedData ? async request => {
+        if (!isCurrent()) throw new WalletError("wrong-account");
+        if (selected.kind !== "fixture") setWalletActivity({ ...action, walletName: selected.walletName, phase: "approval" });
+        const signature = await selected.signTypedData!(request);
+        if (isCurrent() && selected.kind !== "fixture") setWalletActivity({ ...action, walletName: selected.walletName, phase: "processing" });
+        return signature;
+      } : undefined,
     };
   }
 
   useEffect(() => {
     mounted.current = true;
     const hide = () => {
+      const previous = current.current;
+      unsubscribe.current?.();
+      unsubscribe.current = undefined;
+      current.current = null;
+      setSession(null);
       setSessionEpoch((value) => value + 1);
       revision.current++;
       clearPrivateIdentities();
       setIdentities([]);
       setCompatibility("untested");
-      if (current.current?.kind === "builtin") current.current.dispose?.();
+      if (previous?.kind === "builtin") previous.dispose?.();
     };
     window.addEventListener("pagehide", hide);
     const storage = (event: StorageEvent) => {
@@ -213,10 +238,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const refresh = () => setLastUsed(readLastUsedAccount());
+    const storage = (event: StorageEvent) => { if (event.key === LAST_USED_KEY || event.key === null) refresh(); };
+    window.addEventListener(LAST_USED_EVENT, refresh);
+    window.addEventListener("storage", storage);
+    return () => { window.removeEventListener(LAST_USED_EVENT, refresh); window.removeEventListener("storage", storage); };
+  }, []);
+
+  useEffect(() => {
     if (!session) return;
     // A fixed absolute lifetime: status reads and React rerenders never extend it.
     const timer = setTimeout(() => { void disconnect(); }, 5 * 60 * 1000);
     return () => clearTimeout(timer);
+  }, [sessionEpoch]);
+
+  useEffect(() => {
+    if (session?.kind !== "builtin") return;
+    let timer: ReturnType<typeof setTimeout>;
+    const reset = () => { clearTimeout(timer); timer = setTimeout(() => { void disconnect(); }, IDLE_LOCK_MS); };
+    const revoke = () => { void disconnect(); };
+    const storage = (event: StorageEvent) => { if (event.key === VAULT_CHANGE_KEY || event.key === null) revoke(); };
+    reset(); window.addEventListener("pointerdown", reset); window.addEventListener("keydown", reset);
+    window.addEventListener(VAULT_EVENT, revoke); window.addEventListener("storage", storage);
+    return () => { clearTimeout(timer); window.removeEventListener("pointerdown", reset); window.removeEventListener("keydown", reset); window.removeEventListener(VAULT_EVENT, revoke); window.removeEventListener("storage", storage); };
   }, [sessionEpoch]);
 
   async function connect(loadAdapter: () => Promise<LabWalletAdapter>) {
@@ -234,6 +278,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
       current.current = next;
+      if (next.kind !== "fixture") setLastUsed(rememberLastUsedAccount(next));
       setSessionEpoch((value) => value + 1);
       setSession({ ...next });
       setCompatibility("untested");
@@ -252,6 +297,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setSession(null);
           setNotice("Wallet disconnected. Connect again to continue.");
         } else {
+          if (event === "accountsChanged") setLastUsed(rememberLastUsedAccount(next));
           setSession({ ...next });
           setNotice(
             event === "accountsChanged"
@@ -504,9 +550,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return operation(identity.privateKey, isCurrent);
     });
   }
+  async function runOfferKeysOperation<T>(context: ReceivingContext, expectedPublicKey: string | undefined,
+    operation: (keys: ItemKeyPair, session: LabWalletSession, isCurrent: () => boolean) => Promise<T>) {
+    return runOperation(async (session, isCurrent) => {
+      if (session.address.toLowerCase() !== context.account || !isCurrent()) throw new Error("Wrong offer account or session.");
+      const id = canonical(context);
+      let keys = offerKeys.current.get(id);
+      if (!keys) {
+        keys = await restoreReceivingKeys(context, session, isCurrent, expectedPublicKey);
+        if (!isCurrent()) { clearItemKeys(keys); throw new Error("Session changed."); }
+        offerKeys.current.set(id, keys);
+      }
+      if (expectedPublicKey && encodeBase64(keys.encryptionPublicKey) !== expectedPublicKey) throw new Error("Offer key does not match the purchased seller identity.");
+      const result = await operation(keys, session, isCurrent);
+      if (!isCurrent()) throw new Error("Session changed.");
+      return result;
+    }, { action: "restore", label: "Offer delivery keys" });
+  }
   return (
     <Context.Provider
       value={{
+        lastUsed,
         walletActivity,
         savedIdentities: saved.identities,
         storageError: saved.error,
@@ -515,6 +579,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         sessionEpoch,
         identityEpoch,
         runIdentityOperation,
+        runOfferKeysOperation,
         runOperation,
         identities,
         restoreIdentity,

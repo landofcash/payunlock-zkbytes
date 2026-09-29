@@ -3,6 +3,7 @@ import { reownProjectId } from "@/config/reown";
 import { walletNetwork } from "@/config/wallet";
 import { WalletError } from "./errors";
 import { sendReviewedTransaction } from "./transactions";
+import { validateTokenAuthorization } from "./typed-data";
 import type {
   LabWalletAdapter,
   LabWalletSession,
@@ -305,6 +306,15 @@ function connectedSession(
         method: "personal_sign",
         params: [hex, expected],
       });
+      await verify(expected, version);
+      if (typeof signature !== "string") throw new WalletError("unsupported");
+      return signature;
+    },
+    async signTypedData(request) {
+      const expected = address, version = revision;
+      await verify(expected, version);
+      const { domain, types, primaryType, message } = validateTokenAuthorization(request, expected);
+      const signature = await provider.request({ method: "eth_signTypedData_v4", params: [expected, JSON.stringify({ domain, types, primaryType, message })] });
       await verify(expected, version);
       if (typeof signature !== "string") throw new WalletError("unsupported");
       return signature;

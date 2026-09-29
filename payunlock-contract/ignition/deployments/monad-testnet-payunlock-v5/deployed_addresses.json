@@ -1,0 +1,7 @@
+{
+  "PayUnlockV5#PayUnlockCodec": "0x9FA1740484e2afD3E59184DFF2b380522a362b76",
+  "PayUnlockV5#PayUnlockTransfers": "0x7297c6fDa0e77e544D75092ff6F78F79c9d7Bd62",
+  "PayUnlockV5#PayUnlockArbitration": "0xddBb54Ca53b44c87f42A26CCA9Fa9CEe0000faf1",
+  "PayUnlockV5#PayUnlock": "0xe51b90B642d1eEb35a2B71B8D026F1BC6A216E33",
+  "PayUnlockV5#PayUnlockAuthorizationRouter": "0x81F4e4A6cb63c832d0a61E8c67971f5B3fb02d4C"
+}

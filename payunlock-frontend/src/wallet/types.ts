@@ -1,15 +1,28 @@
 import type { ReviewedTransaction } from "./managed-session";
+import type { DeliveryAuthorization } from "./delivery-authorization";
 export type WalletKind = "metamask" | "walletconnect" | "fixture" | "builtin";
 export type WalletSessionEvent =
   "accountsChanged" | "chainChanged" | "disconnect";
+export type ReviewedTypedData = Readonly<{
+  domain: { name: string; version: string; chainId: number; verifyingContract: `0x${string}` };
+  primaryType: string;
+  types: Record<string, { name: string; type: string }[]>;
+  message: Record<string, string>;
+  review: { title: string; asset: string; amount: string; rawValue: string; decimals: number; recipient: string; expiresAt: string };
+}>;
 export interface LabWalletSession {
   kind: WalletKind;
   walletName: string;
   transport: "extension" | "deeplink" | "qr" | "fixture" | "managed";
   address: string;
+  passkey?: Readonly<{ credentialId: string; rpId: string }>;
   chainId?: string;
   signMessage(message: string): Promise<string | Uint8Array>;
+  signTypedData?(request: ReviewedTypedData): Promise<string>;
+  signAppAuthentication?(message: string, origin: string): Promise<string>;
+  signReceivingIdentity?(message: string): Promise<string>;
   readonly locked?: boolean;
+  authorizeDelivery?(scope: DeliveryAuthorization): () => void;
   signTransaction?(transaction: ReviewedTransaction): Promise<string>;
   sendTransaction?(transaction: ReviewedTransaction): Promise<string>;
   disconnect(): Promise<void>;

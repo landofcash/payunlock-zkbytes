@@ -2,21 +2,20 @@ import { StrictMode } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SessionProvider, useSession } from "@/wallet/session-store";
+import { SessionProvider, useSession, IDLE_LOCK_MS } from "@/wallet/session-store";
+import { VAULT_CHANGE_KEY } from "@/wallet/vault";
 import type { LabWalletSession, WalletSessionEvent } from "@/wallet/types";
 
 const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   check: vi.fn(),
-  derive: vi.fn(),
-}));
+  derive: vi.fn() }));
+const accountA = `0x${"11".repeat(20)}`, accountB = `0x${"22".repeat(20)}`;
 vi.mock("@/exchange/identity", async (original) => ({
   ...(await original<typeof import("@/exchange/identity")>()),
-  deriveIdentity: mocks.derive,
-}));
+  deriveIdentity: mocks.derive }));
 vi.mock("@/wallet/metamask-adapter", () => ({
-  metamaskAdapter: { connect: mocks.connect },
-}));
+  metamaskAdapter: { connect: mocks.connect } }));
 vi.mock("@/wallet/compatibility", () => ({ checkCompatibility: mocks.check }));
 function Probe() {
   const state = useSession();
@@ -55,15 +54,14 @@ describe("wallet session lifecycle", () => {
     session = {
       kind: "metamask",
       walletName: "MetaMask",
-      address: "account-a",
+      address: accountA,
       transport: "managed",
       signMessage: vi.fn(),
       disconnect: vi.fn(),
       subscribe(listener) {
         emit = listener;
         return vi.fn();
-      },
-    };
+      } };
     mocks.connect.mockResolvedValue(session);
     mocks.check.mockResolvedValue(true);
   });
@@ -92,8 +90,7 @@ describe("wallet session lifecycle", () => {
     mocks.derive.mockResolvedValue({
       label: "personal",
       publicKey: "public",
-      privateKey,
-    });
+      privateKey });
     render(
       <SessionProvider>
         <Probe />
@@ -138,16 +135,16 @@ describe("wallet session lifecycle", () => {
     await user.click(screen.getByText("Connect"));
     await user.click(screen.getByText("Check"));
     act(() => {
-      session.address = "account-b";
+      session.address = accountB;
       emit("accountsChanged");
     });
     expect(screen.getByText("Check")).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "account-b|untested|busy",
+      `${accountB}|untested|busy`,
     );
     await act(async () => resolve(true));
     expect(screen.getByRole("status")).toHaveTextContent(
-      "account-b|untested|idle",
+      `${accountB}|untested|idle`,
     );
   });
   it("clears compatibility after disconnect and safely displays rejection", async () => {
@@ -164,8 +161,7 @@ describe("wallet session lifecycle", () => {
     expect(screen.getByRole("status")).toHaveTextContent("none|untested");
     mocks.connect.mockRejectedValue({
       code: 4001,
-      message: "raw private data",
-    });
+      message: "raw private data" });
     await user.click(screen.getByText("Connect"));
     await waitFor(() =>
       expect(screen.getByText(/Request declined/)).toBeInTheDocument(),
@@ -184,6 +180,33 @@ describe("wallet session lifecycle", () => {
       expect(privateKey.every(byte => byte === 0)).toBe(true);
       expect(screen.getByRole("status")).toHaveTextContent("none|untested|idle");
       expect(session.disconnect).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
+  it("locks an idle built-in session and revokes it after a cross-tab vault change", async () => {
+    session.kind = "builtin";
+    vi.useFakeTimers();
+    try {
+      render(<SessionProvider><Probe /></SessionProvider>);
+      await act(async () => { fireEvent.click(screen.getByText("Connect")); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(IDLE_LOCK_MS - 1000); });
+      act(() => { fireEvent.keyDown(window, { key: "a" }); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1001); });
+      expect(screen.getByRole("status")).not.toHaveTextContent("none|");
+      await act(async () => { await vi.advanceTimersByTimeAsync(IDLE_LOCK_MS); });
+      expect(screen.getByRole("status")).toHaveTextContent("none|");
+      await act(async () => { fireEvent.click(screen.getByText("Connect")); });
+      await act(async () => { window.dispatchEvent(new StorageEvent("storage", { key: VAULT_CHANGE_KEY, newValue: "changed" })); });
+      expect(screen.getByRole("status")).toHaveTextContent("none|");
+    } finally { vi.useRealTimers(); }
+  });
+  it("does not extend the built-in absolute lifetime through activity", async () => {
+    session.kind = "builtin"; vi.useFakeTimers();
+    try {
+      render(<SessionProvider><Probe /></SessionProvider>);
+      await act(async () => { fireEvent.click(screen.getByText("Connect")); });
+      for (let i = 0; i < 4; i++) { await act(async () => { await vi.advanceTimersByTimeAsync(60000); fireEvent.pointerDown(window); }); }
+      await act(async () => { await vi.advanceTimersByTimeAsync(60001); });
+      expect(screen.getByRole("status")).toHaveTextContent("none|");
     } finally { vi.useRealTimers(); }
   });
 });

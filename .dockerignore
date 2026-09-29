@@ -1,0 +1,11 @@
+**/node_modules
+**/.env
+**/.env.*
+**/.git
+**/output
+**/docs/local
+**/.envio
+**/artifacts
+**/cache
+**/ignition/deployments
+**/dist

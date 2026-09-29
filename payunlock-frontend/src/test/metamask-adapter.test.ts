@@ -18,12 +18,10 @@ function setup() {
   const client = {
     connect: vi.fn(async () => ({
       accounts: [address],
-      chainId: "0x279f" as const,
-    })),
+      chainId: "0x279f" as const })),
     disconnect: vi.fn(async () => {}),
     switchChain: vi.fn(async () => {}),
-    getProvider: () => provider as unknown as EIP1193Provider,
-  };
+    getProvider: () => provider as unknown as EIP1193Provider };
   return {
     provider,
     client,
@@ -31,8 +29,7 @@ function setup() {
     adapter: createMetaMaskAdapter(async () => client),
     setAccounts(next: string[]) {
       accounts = next;
-    },
-  };
+    } };
 }
 describe("MetaMask adapter", () => {
   it("supplies complete network details for the explicit add/switch action", async () => {
@@ -46,9 +43,7 @@ describe("MetaMask adapter", () => {
         chainName: "Monad Testnet",
         nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
         rpcUrls: ["https://testnet-rpc.monad.xyz"],
-        blockExplorerUrls: ["https://testnet.monadvision.com"],
-      },
-    });
+        blockExplorerUrls: ["https://testnet.monadvision.com"] } });
     expect(
       request.mock.calls.some(([call]) => call.method === "personal_sign"),
     ).toBe(false);
@@ -71,8 +66,7 @@ describe("MetaMask adapter", () => {
     expect(client.connect).toHaveBeenCalledWith({ chainIds: ["0x279f"] });
     provider.emit("chainChanged", "0x1");
     await expect(session.signMessage("test")).rejects.toMatchObject({
-      kind: "network",
-    });
+      kind: "network" });
     expect(
       request.mock.calls.some(([call]) => call.method === "personal_sign"),
     ).toBe(false);
@@ -86,16 +80,14 @@ describe("MetaMask adapter", () => {
     expect(await session.signMessage("hello\nπ")).toBe("0xsigned");
     expect(request).toHaveBeenCalledWith({
       method: "personal_sign",
-      params: ["0x68656c6c6f0acf80", address],
-    });
+      params: ["0x68656c6c6f0acf80", address] });
   });
   it("refuses to sign when the selected account no longer matches", async () => {
     const { adapter, request, setAccounts } = setup();
     const session = await adapter.connect();
     setAccounts([other]);
     await expect(session.signMessage("test")).rejects.toMatchObject({
-      kind: "wrong-account",
-    });
+      kind: "wrong-account" });
     expect(
       request.mock.calls.some(([call]) => call.method === "personal_sign"),
     ).toBe(false);
@@ -112,8 +104,7 @@ describe("MetaMask adapter", () => {
       return "0xsigned";
     });
     await expect(session.signMessage("test")).rejects.toMatchObject({
-      kind: "wrong-account",
-    });
+      kind: "wrong-account" });
     expect(listener).toHaveBeenCalledTimes(2);
   });
   it("updates account/network and removes listeners on disconnect", async () => {
@@ -130,8 +121,7 @@ describe("MetaMask adapter", () => {
     expect(client.disconnect).toHaveBeenCalledOnce();
     expect(provider.listenerCount("accountsChanged")).toBe(0);
     await expect(session.signMessage("test")).rejects.toMatchObject({
-      kind: "disconnected",
-    });
+      kind: "disconnected" });
   });
   it("treats an empty account list as disconnect", async () => {
     const { adapter, provider } = setup();
@@ -141,8 +131,7 @@ describe("MetaMask adapter", () => {
     provider.emit("accountsChanged", []);
     expect(listener).toHaveBeenCalledWith("disconnect");
     await expect(session.signMessage("test")).rejects.toMatchObject({
-      kind: "disconnected",
-    });
+      kind: "disconnected" });
   });
   it.each([
     [4001, "rejected"],

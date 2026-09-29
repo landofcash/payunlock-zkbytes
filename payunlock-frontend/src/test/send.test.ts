@@ -4,18 +4,15 @@ import { Wallet } from "ethers";
 import {
   ZkbytesClient,
   decryptStorageItem,
-  type StorageItem,
-} from "@zkbytes/sdk";
+  type StorageItem } from "@zkbytes/sdk";
 import {
   prepareMessage,
   recoverCandidate,
-  uploadCandidate,
-} from "@/exchange/send";
+  uploadCandidate } from "@/exchange/send";
 import { deriveIdentity } from "@/exchange/identity";
 import {
   createReceiveCard,
-  serializeReceiveCard,
-} from "@/exchange/receive-card";
+  serializeReceiveCard } from "@/exchange/receive-card";
 import { openSealedSeed, sealedSeedFragment } from "@/exchange/sealed-seed";
 
 async function fixture() {
@@ -28,8 +25,7 @@ async function fixture() {
       transport: "fixture",
       address: recipient.address,
       signMessage: (message) => recipient.signMessage(message),
-      disconnect: async () => {},
-    },
+      disconnect: async () => {} },
     "personal",
     () => true,
   );
@@ -37,12 +33,10 @@ async function fixture() {
   const client = new ZkbytesClient({
     apiOrigin: "https://api.example.com",
     downloadOrigin: "https://files.example.com",
-    fetch,
-  });
+    fetch });
   const signer = {
     address: sender.address,
-    signMessage: vi.fn((message: string) => sender.signMessage(message)),
-  };
+    signMessage: vi.fn((message: string) => sender.signMessage(message)) };
   const candidate = await prepareMessage(
     client,
     "Confidential message 123",
@@ -56,8 +50,7 @@ async function fixture() {
 function response(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
-  });
+    headers: { "Content-Type": "application/json" } });
 }
 describe("message sending", () => {
   it("requires separate upload and sends encrypted data only; another wallet decrypts both layers", async () => {
@@ -75,8 +68,7 @@ describe("message sending", () => {
           downloadUrl: client.downloadUrl(candidate.item.seed),
           itemSignature: candidate.item.itemSignature,
           createdAt: "2026-09-21T12:37:03.075Z",
-          expiresAt: candidate.item.expiresAt,
-        },
+          expiresAt: candidate.item.expiresAt },
         201,
       ),
     );
@@ -118,8 +110,7 @@ describe("message sending", () => {
         seed: candidate.item.seed,
         state: "active",
         createdAt: "2026-09-21T12:37:03.075Z",
-        expiresAt: candidate.item.expiresAt,
-      }),
+        expiresAt: candidate.item.expiresAt }),
     );
     fetch.mockResolvedValueOnce(response(candidate.item));
     expect(await recoverCandidate(client, candidate)).toBe("active");
@@ -168,9 +159,7 @@ describe("message sending", () => {
         {
           error: {
             code: "RETENTION_NOT_ALLOWED",
-            message: "unsupported expiration",
-          },
-        },
+            message: "unsupported expiration" } },
         400,
       ),
     );
@@ -191,8 +180,7 @@ describe("message sending", () => {
         seed: candidate.item.seed,
         state: "deleted",
         deletedBy: { publicKey: candidate.item.creator.publicKey },
-        deletedAt: "2030-01-01T00:00:00Z",
-      }),
+        deletedAt: "2030-01-01T00:00:00Z" }),
     );
     expect(await recoverCandidate(client, candidate)).toBe("deleted");
     identity.privateKey.fill(0);

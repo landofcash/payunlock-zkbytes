@@ -1,0 +1,91 @@
+type ChainProduct {
+  id: ID!
+  deployment: String! @index
+  seller: String! @index
+  productKey: String!
+  status: Int!
+  data: String!
+  updatedBlock: BigInt!
+}
+
+type ChainOrder {
+  id: ID!
+  deployment: String! @index
+  orderId: BigInt! @index
+  buyer: String! @index
+  seller: String! @index
+  productKey: String!
+  requestId: String! @index
+  state: Int!
+  snapshot: String!
+  token: String!
+  price: BigInt!
+  commitment: String!
+  publicationDeadline: BigInt!
+  reviewDeadline: BigInt!
+  responseDeadline: BigInt!
+  turn: BigInt!
+  arbitrator: String! @index
+  assignment: String!
+  revision: BigInt!
+  handoverRecorded: Boolean!
+  updatedBlock: BigInt!
+}
+
+type ChainRecord {
+  id: ID!
+  order: String! @index
+  sequence: BigInt! @index
+  author: String!
+  commitment: String!
+  data: String!
+}
+
+type ChainEvidence {
+  id: ID!
+  order: String! @index
+  index: BigInt! @index
+  revision: BigInt!
+  submitter: String!
+  commitment: String!
+  data: String!
+}
+
+type ChainEvidenceRequest {
+  id: ID!
+  order: String! @index
+  index: BigInt! @index
+  revision: BigInt!
+  participant: String!
+  commitment: String!
+  data: String!
+  assignment: String!
+  advisoryDate: BigInt!
+}
+
+type ChainArbitrator {
+  id: ID!
+  deployment: String! @index
+  wallet: String!
+  active: Boolean!
+  publicKey: String!
+  keyVersion: BigInt!
+  fee: BigInt!
+}
+
+type ChainEvent {
+  id: ID!
+  deployment: String! @index
+  order: String! @index
+  name: String!
+  blockNumber: BigInt!
+  blockHash: String!
+  position: BigInt! @index
+  transactionHash: String!
+  data: String!
+}
+
+type ChainConfiguration {
+  id: ID!
+  data: String!
+}

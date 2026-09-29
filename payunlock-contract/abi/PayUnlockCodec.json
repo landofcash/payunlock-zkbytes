@@ -1,0 +1,405 @@
+{
+  "contractName": "PayUnlockCodec",
+  "abi": [
+    {
+      "inputs": [],
+      "name": "InvalidReference",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "value",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "length",
+          "type": "uint256"
+        }
+      ],
+      "name": "StringsInsufficientHexLength",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes",
+          "name": "value",
+          "type": "bytes"
+        }
+      ],
+      "name": "envelope",
+      "outputs": [],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes",
+          "name": "encodedOrder",
+          "type": "bytes"
+        },
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "wallet",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "publicKey",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "keyVersion",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "revision",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint256",
+              "name": "fee",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "requester",
+              "type": "address"
+            },
+            {
+              "internalType": "bool",
+              "name": "handoverRecorded",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct PayUnlockTypes.Assignment",
+          "name": "a",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "uint32",
+                  "name": "serviceId",
+                  "type": "uint32"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "preparedAt",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "creator",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "buyerEnvelope",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "sellerEnvelope",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "contentHash",
+                  "type": "bytes32"
+                }
+              ],
+              "internalType": "struct PayUnlockTypes.Reference",
+              "name": "contentRef",
+              "type": "tuple"
+            },
+            {
+              "internalType": "bytes",
+              "name": "arbitratorEnvelope",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct PayUnlockTypes.Evidence",
+          "name": "e",
+          "type": "tuple"
+        }
+      ],
+      "name": "evidenceHash",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes",
+          "name": "encodedOrder",
+          "type": "bytes"
+        },
+        {
+          "components": [
+            {
+              "internalType": "uint32",
+              "name": "serviceId",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "preparedAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "creator",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "buyerEnvelope",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "sellerEnvelope",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "contentHash",
+              "type": "bytes32"
+            }
+          ],
+          "internalType": "struct PayUnlockTypes.Reference",
+          "name": "r",
+          "type": "tuple"
+        },
+        {
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "turn",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "message",
+          "type": "bool"
+        }
+      ],
+      "name": "recordHash",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes",
+          "name": "encodedOrder",
+          "type": "bytes"
+        },
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "wallet",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "publicKey",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "keyVersion",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "revision",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint256",
+              "name": "fee",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "requester",
+              "type": "address"
+            },
+            {
+              "internalType": "bool",
+              "name": "handoverRecorded",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct PayUnlockTypes.Assignment",
+          "name": "a",
+          "type": "tuple"
+        },
+        {
+          "internalType": "uint256",
+          "name": "index",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "participant",
+          "type": "address"
+        },
+        {
+          "internalType": "uint64",
+          "name": "advisoryDate",
+          "type": "uint64"
+        },
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "uint32",
+                  "name": "serviceId",
+                  "type": "uint32"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "preparedAt",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "creator",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "buyerEnvelope",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "sellerEnvelope",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "contentHash",
+                  "type": "bytes32"
+                }
+              ],
+              "internalType": "struct PayUnlockTypes.Reference",
+              "name": "contentRef",
+              "type": "tuple"
+            },
+            {
+              "internalType": "bytes",
+              "name": "arbitratorEnvelope",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct PayUnlockTypes.Evidence",
+          "name": "request",
+          "type": "tuple"
+        }
+      ],
+      "name": "requestHash",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint32",
+              "name": "serviceId",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "preparedAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "creator",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "buyerEnvelope",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "sellerEnvelope",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "contentHash",
+              "type": "bytes32"
+            }
+          ],
+          "internalType": "struct PayUnlockTypes.Reference",
+          "name": "r",
+          "type": "tuple"
+        }
+      ],
+      "name": "validate",
+      "outputs": [],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}

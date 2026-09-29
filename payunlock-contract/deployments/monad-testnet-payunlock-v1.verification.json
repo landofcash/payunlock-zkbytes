@@ -1,0 +1,26 @@
+{
+  "chainId": 10143,
+  "deploymentId": "monad-testnet-payunlock-v1",
+  "verifiedOn": "2026-09-25",
+  "provider": "sourcify",
+  "contracts": [
+    {
+      "name": "PayUnlock",
+      "address": "0xe69c6d3783e4ED59b7900f1766E325ED65ddD364",
+      "verified": true,
+      "url": "https://sourcify.dev/server/repo-ui/10143/0xe69c6d3783e4ED59b7900f1766E325ED65ddD364"
+    },
+    {
+      "name": "PayUnlockCodec",
+      "address": "0x52b13847C2be22e2be5156e14149e3f8b23807b3",
+      "verified": true,
+      "url": "https://sourcify.dev/server/repo-ui/10143/0x52b13847C2be22e2be5156e14149e3f8b23807b3"
+    },
+    {
+      "name": "TestPaymentToken",
+      "address": "0x02c5fc8DE13A07541B5E4Ddbc6285B1247453AB4",
+      "verified": true,
+      "url": "https://sourcify.dev/server/repo-ui/10143/0x02c5fc8DE13A07541B5E4Ddbc6285B1247453AB4"
+    }
+  ]
+}

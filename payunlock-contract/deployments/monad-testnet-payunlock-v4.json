@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "chainId": 10143,
+  "deploymentId": "monad-testnet-payunlock-v4",
+  "escrow": "0x42327297792f63c11c60E00C7F73aEC9d51d3b08",
+  "codec": "0xe8c0B0088A6Cb670F7d4a49b65A922e19466eD79",
+  "testToken": "0xE12009f8E253760E32F1cd2ba12F813381750049",
+  "deploymentBlock": 66208796,
+  "admin": "0xe72f1873c09278018DbdB347E9E6500Eb3dFa896",
+  "abiVersion": "payunlock-v4",
+  "abiHash": "0xe7e853d275e1f64a726275c2035cd068b8412291bcf15f4a111ca74e03534537",
+  "parameters": {
+    "admin": "0xe72f1873c09278018DbdB347E9E6500Eb3dFa896",
+    "defaultReviewWindow": 86400,
+    "minResponseWindow": 60,
+    "minCommitmentWindow": 60,
+    "maxCommitmentWindow": 86400
+  },
+  "testTokenDecimals": 6,
+  "bytecodeHashes": {
+    "escrow": "0x61a73a14ffbfcfd09ab774a376ef34da07849149c8dc726e59f8fc51d784a65e",
+    "codec": "0x3d83e35c61bc2f37032b3b0f80b8e303d737b9920b0d3aaa3b2bbfc3b1ee4c1e",
+    "testToken": "0x3b071bc44d55b19fe58f3947a7655762d744e936959e699c8a56b732fd2faf14"
+  },
+  "finalizedReceipts": [
+    {
+      "hash": "0x7da9eeaefc40e133023b85337d8002d446f02034692b5e22d6b5b22e6219f723",
+      "blockNumber": 66208796,
+      "blockHash": "0x9501083072bc1467fb6f470598868ae7067c4e57b354f13987295a308e157cca"
+    },
+    {
+      "hash": "0xecd837de776fb5269b0b1a88fdfec2f05d98671f40b2df7ea44ec744687eea36",
+      "blockNumber": 66208801,
+      "blockHash": "0x7d1a7f96895e1483950fe07c446d238d7d77e9d39ddb80b3b1fff5eb42d32ab0"
+    },
+    {
+      "hash": "0x30c32a983f334c1c158b16211ab5991eb336d18c6ea15d71c8292aef68c3f98a",
+      "blockNumber": 66208808,
+      "blockHash": "0xa3f4def28ac9eddec73909ac79a8160823ec871ae105a902b0c7d4c9a04575a8"
+    },
+    {
+      "hash": "0x97b6520647705e9190a554fd120c5c559f9bd3393cf9eef1581bad2c28ab5228",
+      "blockNumber": 66208819,
+      "blockHash": "0x7dde232dcb5a175a2d314a94a36e8383560c86c088bfe7fa920e8897c5a11e16"
+    }
+  ],
+  "checkedAt": "2026-09-27T19:23:56.024Z"
+}

@@ -3,6 +3,7 @@ export interface LocalStore {
   put(key: string, value: unknown): Promise<void>;
   remove(key: string): Promise<void>;
   compareAndSwap(key: string, expected: unknown, value: unknown): Promise<void>;
+  keys?(): Promise<string[]>;
 }
 export class IndexedStore implements LocalStore {
   private db?: Promise<IDBDatabase>;
@@ -29,6 +30,14 @@ export class IndexedStore implements LocalStore {
   get(key: string) { return this.request(key, "readonly", (store, id) => store.get(id)); }
   async put(key: string, value: unknown) { await this.request(key, "readwrite", (store, id) => store.put(value, id)); }
   async remove(key: string) { await this.request(key, "readwrite", (store, id) => store.delete(id)); }
+  async keys() {
+    const db = await this.open();
+    return new Promise<string[]>((resolve, reject) => {
+      const transaction = db.transaction("records", "readonly"), request = transaction.objectStore("records").getAllKeys();
+      transaction.oncomplete = () => resolve(request.result.filter((key): key is string => typeof key === "string"));
+      transaction.onabort = transaction.onerror = () => reject(new Error("Local records could not be listed."));
+    });
+  }
   async compareAndSwap(key: string, expected: unknown, value: unknown) {
     const db = await this.open();
     await new Promise<void>((resolve, reject) => {
@@ -36,7 +45,7 @@ export class IndexedStore implements LocalStore {
       const read = store.get(key);
       read.onsuccess = () => {
         if (JSON.stringify(read.result) !== JSON.stringify(expected)) { transaction.abort(); return; }
-        store.put(value, key);
+        if (value === undefined) store.delete(key); else store.put(value, key);
       };
       transaction.oncomplete = () => resolve();
       transaction.onabort = () => reject(new Error("Record changed in another tab. Reload before continuing."));

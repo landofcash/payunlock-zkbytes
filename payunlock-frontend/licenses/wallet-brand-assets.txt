@@ -1,0 +1,6 @@
+﻿Wallet provider brand assets
+
+MetaMask fox: https://github.com/MetaMask/metamask-extension/blob/main/app/images/logo/metamask-fox.svg
+WalletConnect icon: https://github.com/WalletConnect/walletconnect-assets/blob/master/Icon/Blue%20(Default)/Icon.svg
+
+Retrieved 2026-09-27 from the providers' official repositories. Used to identify the corresponding wallet connection options. Brand names and logos remain the property of their respective owners; no endorsement is implied.

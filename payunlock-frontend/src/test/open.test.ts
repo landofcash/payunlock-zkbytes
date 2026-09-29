@@ -5,12 +5,10 @@ import {
   ZkbytesClient,
   randomBytes,
   encodeBase64,
-  x25519PublicKeyFromPrivate,
-} from "@zkbytes/sdk";
+  x25519PublicKeyFromPrivate } from "@zkbytes/sdk";
 import {
   createReceiveCard,
-  serializeReceiveCard,
-} from "@/exchange/receive-card";
+  serializeReceiveCard } from "@/exchange/receive-card";
 import { prepareMessage } from "@/exchange/send";
 import { sealedSeedLink } from "@/exchange/sealed-seed";
 import { openMessage } from "@/exchange/open";
@@ -24,8 +22,7 @@ async function fixture() {
   const client = new ZkbytesClient({
     apiOrigin: "https://api.example.com",
     downloadOrigin: "https://files.example.com",
-    fetch,
-  });
+    fetch });
   const sender = new Wallet("0x" + "0".repeat(63) + "2");
   const candidate = await prepareMessage(
     client,
@@ -57,8 +54,7 @@ describe("opening messages", () => {
         ).resolves.toEqual({
           plaintext: "Message for another recipient",
           expiresAt: candidate.item.expiresAt,
-          expired: false,
-        });
+          expired: false });
         expect(fetch).toHaveBeenCalledExactlyOnceWith(
           client.downloadUrl(candidate.item.seed),
           { method: "GET" },
@@ -101,8 +97,7 @@ describe("opening messages", () => {
         new Response(
           JSON.stringify({
             ...candidate.item,
-            encryptedPayload: candidate.item.encryptedPayload + "x",
-          }),
+            encryptedPayload: candidate.item.encryptedPayload + "x" }),
         ),
       );
       await expect(
@@ -136,8 +131,7 @@ describe("opening messages", () => {
         ),
       ).resolves.toMatchObject({
         expired: true,
-        plaintext: "Message for another recipient",
-      });
+        plaintext: "Message for another recipient" });
     } finally {
       now.mockRestore();
       privateKey.fill(0);

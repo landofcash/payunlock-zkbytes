@@ -5,13 +5,11 @@ import {
   clearItemKeys,
   prepareItem,
   ZkbytesClient,
-  SIGNATURE_SCHEME,
-} from "@zkbytes/sdk";
+  SIGNATURE_SCHEME } from "@zkbytes/sdk";
 import {
   importReference,
   prepareDeletion,
-  recoverReference,
-} from "@/exchange/management";
+  recoverReference } from "@/exchange/management";
 
 async function fixture(noManagers = false) {
   const signer = new Wallet("0x" + "0".repeat(63) + "2");
@@ -19,22 +17,19 @@ async function fixture(noManagers = false) {
     signer,
     plaintext: "Management test",
     expiresAt: "2035-01-01T00:00:00Z",
-    ...(noManagers ? { managers: [] } : {}),
-  });
+    ...(noManagers ? { managers: [] } : {}) });
   clearItemKeys(prepared.keys);
   const request = vi.fn<typeof fetch>(async () => Response.json(prepared.item));
   const client = new ZkbytesClient({
     apiOrigin: "https://api.test",
     downloadOrigin: "https://files.test",
-    fetch: request,
-  });
+    fetch: request });
   return {
     signer,
     item: prepared.item,
     request,
     client,
-    reference: client.createReference(prepared.item),
-  };
+    reference: client.createReference(prepared.item) };
 }
 
 it("imports only bounded references matching configured origins without making requests", async () => {
@@ -70,16 +65,13 @@ it.each(["active", "pending", "deleted", "expired", "not-found"] as const)(
           ...(state === "active"
             ? {
                 createdAt: "2026-09-21T00:00:00Z",
-                expiresAt: reference.expiresAt,
-              }
+                expiresAt: reference.expiresAt }
             : {}),
           ...(state === "deleted"
             ? {
                 deletedBy: { publicKey: item.creator.publicKey },
-                deletedAt: "2026-09-21T00:00:00Z",
-              }
-            : {}),
-        },
+                deletedAt: "2026-09-21T00:00:00Z" }
+            : {}) },
         { status: state === "pending" ? 202 : 200 },
       );
     });
@@ -100,8 +92,7 @@ it("keeps unavailable and mismatched recovery uncertain", async () => {
   vi.spyOn(client, "recoverUpload").mockResolvedValue({
     outcome: "active",
     item: { expiresAt: "2034-01-01T00:00:00Z" },
-    status: { expiresAt: reference.expiresAt },
-  } as never);
+    status: { expiresAt: reference.expiresAt } } as never);
   await expect(recoverReference(client, reference)).rejects.toThrow(
     "Reference mismatch",
   );
@@ -166,8 +157,7 @@ it("submits the SDK challenge/action only on confirmation and reports physical r
     state: "deleted",
     deletedBy: { publicKey: prepared.publicKey },
     deletedAt: issuedAt,
-    physicalDeletion: "pending",
-  };
+    physicalDeletion: "pending" };
   const request = vi.fn<typeof fetch>(async (url) =>
     String(url).endsWith("/challenges")
       ? Response.json({
@@ -190,8 +180,7 @@ it("submits the SDK challenge/action only on confirmation and reports physical r
             `Challenge: ${challengeId}`,
             `Issued: ${issuedAt}`,
             `Expires: ${expiresAt}`,
-          ].join("\n"),
-        })
+          ].join("\n") })
       : Response.json(accepted, { status: 202 }),
   );
   await expect(prepared.submit(() => true, request)).resolves.toEqual(accepted);

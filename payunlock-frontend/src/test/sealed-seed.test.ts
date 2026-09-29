@@ -4,20 +4,17 @@ import {
   encodeBase32,
   encodeBase64,
   randomBytes,
-  x25519PublicKeyFromPrivate,
-} from "@zkbytes/sdk";
+  x25519PublicKeyFromPrivate } from "@zkbytes/sdk";
 import { createReceiveCard } from "@/exchange/receive-card";
 import {
   sealSeed,
   openSealedSeed,
   sealedSeedLink,
   sealedSeedFragment,
-  parseSealedSeedFragment,
-} from "@/exchange/sealed-seed";
+  parseSealedSeedFragment } from "@/exchange/sealed-seed";
 import {
   sealSeed as sealLegacy,
-  sealedSeedFragment as legacyFragment,
-} from "@/exchange/sealed-seed-v2";
+  sealedSeedFragment as legacyFragment } from "@/exchange/sealed-seed-v2";
 
 async function fixture() {
   const privateKey = randomBytes(32);
@@ -80,8 +77,7 @@ describe("direct encrypted seed links", () => {
           encryptedSeed:
             envelope.encryptedSeed.slice(0, 20) +
             (envelope.encryptedSeed[20] === "A" ? "B" : "A") +
-            envelope.encryptedSeed.slice(21),
-        };
+            envelope.encryptedSeed.slice(21) };
         await expect(
           openSealedSeed(sealedSeedFragment(changed, withKey), privateKey),
         ).rejects.toThrow();

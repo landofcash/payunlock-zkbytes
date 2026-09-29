@@ -1,5 +1,6 @@
 import { Wallet } from "ethers";
 import type { LabWalletAdapter } from "./types";
+import { validateTokenAuthorization } from "./typed-data";
 
 // Public, deliberately insecure development identity. Never fund this account.
 const FIXTURE_PRIVATE_KEY = "0x" + "0".repeat(63) + "1";
@@ -18,6 +19,11 @@ export const fixtureAdapter: LabWalletAdapter = {
       async signMessage(message) {
         if (!connected) throw new Error("Fixture disconnected.");
         return wallet.signMessage(message);
+      },
+      async signTypedData(request) {
+        if (!connected) throw new Error("Fixture disconnected.");
+        const { domain, types, message } = validateTokenAuthorization(request, wallet.address);
+        return wallet.signTypedData(domain, types, message);
       },
       async disconnect() {
         connected = false;

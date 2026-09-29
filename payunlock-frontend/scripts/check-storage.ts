@@ -27,7 +27,7 @@ async function main() {
   if (!apiOrigin || !downloadOrigin || !Number.isSafeInteger(cap) || (cap !== 0 && cap < RETENTION_SECONDS)) throw new Error("Configure API/download origins and a compatible retention cap.");
   const client = new ZkbytesClient({ apiOrigin, downloadOrigin });
   stage = "receiving-identities";
-  const service = { id: "zkbytes-live-v1", client, maxRetentionSeconds: cap };
+  const service = { id: 1, client, maxRetentionSeconds: cap };
   const buyerWallet = new Wallet("0x" + "0".repeat(63) + "1"), sellerWallet = new Wallet("0x" + "0".repeat(63) + "2");
   const deployment = { chainId: 10143 as const, contract: "0x" + "1".repeat(40) };
   const buyer = await restoreReceiving(newReceivingContext(deployment, buyerWallet.address), buyerWallet, () => true);

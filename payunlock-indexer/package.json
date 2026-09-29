@@ -1,0 +1,16 @@
+{
+  "name": "@payunlock/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "codegen": "node --env-file-if-exists=../.env scripts/run.mjs codegen",
+    "build": "pnpm codegen && tsc --noEmit",
+    "typecheck": "pnpm codegen && tsc --noEmit",
+    "test": "node --env-file-if-exists=../.env scripts/run.mjs test",
+    "dev": "node --env-file-if-exists=../.env scripts/run.mjs dev",
+    "start": "node --env-file-if-exists=../.env scripts/run.mjs start"
+  },
+  "dependencies": { "envio": "3.12.1" },
+  "devDependencies": { "typescript": "5.9.3", "@types/node": "24.10.0", "vitest": "5.0.1" }
+}

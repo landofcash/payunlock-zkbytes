@@ -28,7 +28,7 @@ export async function checkStorageBrowser(backup: string) {
       const wallet = new Wallet("0x" + "0".repeat(63) + (role === "buyer" ? "1" : "2"));
       const identity = await restoreReceiving(pending.record.order[role].context, wallet, () => true, pending.record.order[role].publicKey);
       try {
-        const opened = await openDelivery({ record: pending.record, expectedRecordHash: pending.recordHash, order: pending.record.order, role, privateKey: identity.privateKey, services: [{ id: "zkbytes-live-v1", client, maxRetentionSeconds: 0 }], isCurrent: () => true });
+        const opened = await openDelivery({ record: pending.record, expectedRecordHash: pending.recordHash, order: pending.record.order, role, privateKey: identity.privateKey, services: [{ id: 1, client, maxRetentionSeconds: 0 }], isCurrent: () => true });
         if (opened.payload.text !== pending.opening.payload.text) throw new Error("Payload mismatch");
       } finally { identity.privateKey.fill(0); }
     }

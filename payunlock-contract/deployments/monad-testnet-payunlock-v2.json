@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "chainId": 10143,
+  "deploymentId": "monad-testnet-payunlock-v2",
+  "escrow": "0x457d9DE7F5075edE5867f82946959f1EeD45bC25",
+  "codec": "0xA4bFa723eE59dFe6798ae2c2d5C464b3E615b0C1",
+  "testToken": "0xA709a099A24235c7C4d2De4aA39137c23A5D82eC",
+  "deploymentBlock": 65847196,
+  "admin": "0xe72f1873c09278018DbdB347E9E6500Eb3dFa896",
+  "abiVersion": "payunlock-v2",
+  "abiHash": "0x02eaa3b269bdc20b07bd2d7080fb7ce6ed561733bc98bd01b9f26e88af4b756d",
+  "parameters": {
+    "admin": "0xe72f1873c09278018DbdB347E9E6500Eb3dFa896",
+    "defaultReviewWindow": 86400,
+    "minResponseWindow": 60,
+    "minCommitmentWindow": 60,
+    "maxCommitmentWindow": 86400
+  },
+  "testTokenDecimals": 6,
+  "bytecodeHashes": {
+    "escrow": "0x5eeca8e28f582bafe78e855465983bbb3cc2474c29243feb74f3de351d98d087",
+    "codec": "0xbcf99a70becbebcda648158eae1e8a2fa30f1fbc3f4031802bfc3f6b08fc6955",
+    "testToken": "0x3b071bc44d55b19fe58f3947a7655762d744e936959e699c8a56b732fd2faf14"
+  },
+  "finalizedReceipts": [
+    {
+      "hash": "0x86fabd3862035a278a2ca8f84778a26bfb1b6b3f4d0af92a1a348ebaf0518e8f",
+      "blockNumber": 65847196,
+      "blockHash": "0x4519d5e58f99732af02b2ae7dcadf219d4a99d406fd2eeca587ef3210234c2c7"
+    },
+    {
+      "hash": "0x317eea7557240fb2ebaa92c13b02c91752159eabcd4e837cf7f4267a89820626",
+      "blockNumber": 65847202,
+      "blockHash": "0x2f45c35ad5a98702346c242ec8f34426a4c4352ebf52121567de1f68c3d09469"
+    },
+    {
+      "hash": "0x72d392b97f0f03b3df33109476bfca09fe106b1142b5f2f475f019d0221f1d48",
+      "blockNumber": 65847212,
+      "blockHash": "0xec5cc47896d7e839937372c40ec8191a286267815bde31f8a650d76749710976"
+    },
+    {
+      "hash": "0xf80dac4414ad98f75ff5f235058f0e6824a36babdaaeaa3f8cb87acd9fd5addf",
+      "blockNumber": 65847222,
+      "blockHash": "0xbcfc25b2df1a3da5f359a266721df9f783848c11461488926fdbe5dd56c1254b"
+    }
+  ],
+  "checkedAt": "2026-09-26T12:08:18.841Z"
+}

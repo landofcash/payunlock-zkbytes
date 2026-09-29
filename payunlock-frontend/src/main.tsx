@@ -4,6 +4,8 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { loadFrontendConfig } from "./config";
 import "./styles.css";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/jetbrains-mono";
 import { SessionProvider } from "./wallet/session-store";
 
 const root = createRoot(document.getElementById("root")!);

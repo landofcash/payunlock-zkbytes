@@ -1,11 +1,33 @@
-import { useEffect, useState } from "react";
-import { Link, NavLink, Route, Routes } from "react-router-dom";
-import { ArrowUpRight, LockKeyhole, PackageOpen, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link, NavLink, Route, Routes, Navigate, useLocation } from "react-router-dom";
+import { ArrowUpRight, LockKeyhole, ShieldCheck, Compass, ShoppingBag, Wallet } from "lucide-react";
+import { ThemeProvider, ThemePicker } from "./app/theme";
 import { HealthResponseSchema } from "@payunlock/api-contracts";
 import { lazy, Suspense } from "react";
-const WalletPage = lazy(() => import("./wallet/WalletPage").then(module => ({ default: module.WalletPage })));
+import { CommerceProvider, ProtectedAccess } from "./commerce/client";
+import { ApprovalProvider } from "./wallet/ApprovalProvider";
+import { Catalog, ProductPage } from "./commerce/Catalog";
+import { SellerEditor } from "./commerce/Seller";
+import { Orders, OrderPage, BuyerOrderPage, SellerOrderPage, ArbitratorOrderPage } from "./commerce/Orders";
+import { BulkDelivery } from "./commerce/BulkDelivery";
+import { MyOffers } from "./commerce/MyOffers";
+import { Platform } from "./commerce/Platform";
+import { useSession } from "./wallet/session-store";
+import { SellerMenu } from "./app/SellerMenu";
+import { Discover } from "./commerce/Discover";
+const WalletMenu = lazy(() => import("./wallet/WalletPage").then(module => ({ default: module.WalletMenu })));
 
 export function App({ apiOrigin, walletsEnabled = false }: { apiOrigin: string; walletsEnabled?: boolean }) {
+  return <ThemeProvider><AppShell apiOrigin={apiOrigin} walletsEnabled={walletsEnabled} /></ThemeProvider>;
+}
+function AppShell({ apiOrigin, walletsEnabled }: { apiOrigin: string; walletsEnabled: boolean }) {
+  const wallet = useSession();
+  const location = useLocation();
+  const previousPath = useRef(location.pathname);
+  useEffect(() => {
+    if (previousPath.current !== location.pathname) document.getElementById("main-content")?.focus({ preventScroll: true });
+    previousPath.current = location.pathname;
+  }, [location.pathname]);
   const [availability, setAvailability] = useState("Connecting");
   useEffect(() => {
     const controller = new AbortController();
@@ -16,20 +38,33 @@ export function App({ apiOrigin, walletsEnabled = false }: { apiOrigin: string; 
     }).catch(() => { if (!controller.signal.aborted) setAvailability("Service unavailable"); });
     return () => controller.abort();
   }, [apiOrigin]);
-  return <div className="app-shell">
-    <header><Link className="brand" to="/" aria-label="PayUnlock home"><span className="brand-icon"><LockKeyhole size={20} /></span>PayUnlock<span className="preview-label">Preview</span></Link>
-      <nav aria-label="Main navigation"><NavLink to="/" end>Discover</NavLink><NavLink to="/purchases">Purchases</NavLink><NavLink to="/sales">Sales</NavLink></nav>
-      {walletsEnabled && <NavLink to="/wallet">Wallet</NavLink>}<span className="network">Monad Testnet</span>
+  return <ApprovalProvider><CommerceProvider origin={apiOrigin}><div className="app-shell">
+    <a className="skip-link" href="#main-content">Skip to content</a>
+    <header><Link className="brand" to="/" aria-label="PayUnlock home"><span className="brand-icon"><LockKeyhole size={20} aria-hidden="true" /></span>PayUnlock<span className="preview-label">Preview</span></Link>
+      <nav aria-label="Main navigation"><NavLink to="/discover"><Compass aria-hidden="true" />Discover</NavLink><NavLink to="/purchases"><ShoppingBag aria-hidden="true" />Purchases</NavLink><SellerMenu /></nav>
+      <div className="header-actions"><ThemePicker />{walletsEnabled && <Suspense fallback={<span className="wallet-nav"><Wallet size={17} aria-hidden="true" />Sign in</span>}><WalletMenu /></Suspense>}</div>
     </header>
-    <main><Routes>
-      <Route path="/" element={<><section className="hero"><p className="eyebrow">YOUR NEXT GOOD FIND</p><h1>Worth discovering.<br /><span>Yours to unlock.</span></h1><p className="intro">Digital products, private events, and ideas worth sharing. A place to buy from creators and receive your content privately.</p><a className="discover-link" href="#offers">Explore offers <ArrowUpRight size={18} /></a></section><section id="offers" className="offers"><div className="section-heading"><h2>Discover offers</h2><span>Coming soon</span></div><div className="empty-state"><PackageOpen size={36} strokeWidth={1.3} /><h3>A new space for creators</h3><p>Offers and purchasing will be available in a future preview.</p></div></section></>} />
-      <Route path="/purchases" element={<EmptyPage title="Your purchases" description="Your orders and private deliveries will appear here once purchasing is available." />} />
-      <Route path="/sales" element={<EmptyPage title="Your sales" description="Your offers, paid orders, and delivery tools will be available here." />} />
-      <Route path="/wallet" element={walletsEnabled ? <Suspense fallback={<p>Opening wallet…</p>}><WalletPage /></Suspense> : <EmptyPage title="Wallet unavailable" description="Wallets are not enabled in this environment." />} />
+    <main id="main-content" tabIndex={-1}><Routes key={location.pathname === "/create" ? "create" : `${wallet.sessionEpoch}:${wallet.identityEpoch}`}>
+      <Route path="/" element={<Catalog />} />
+      <Route path="/discover" element={<Discover />} />
+      <Route path="/purchases" element={<Orders role="buyer" />} />
+      <Route path="/sales" element={<Orders role="seller" />} />
+      <Route path="/offers" element={<MyOffers />} />
+      <Route path="/arbitration" element={<Orders role="arbitrator" />} />
+      <Route path="/platform" element={<Platform />} />
+      <Route path="/products/:id" element={<ProductPage />} />
+      <Route path="/create" element={<SellerEditor />} />
+      <Route path="/sales/products/:id" element={<ProtectedAccess label="Manage offer"><SellerEditor /></ProtectedAccess>} />
+      <Route path="/sales/products/:id/orders" element={<ProtectedAccess label="Prepare deliveries"><BulkDelivery /></ProtectedAccess>} />
+      <Route path="/purchases/:id" element={<BuyerOrderPage />} />
+      <Route path="/sales/orders/:id" element={<SellerOrderPage />} />
+      <Route path="/arbitration/:id" element={<ArbitratorOrderPage />} />
+      <Route path="/orders/:id" element={<OrderPage />} />
+      <Route path="/wallet" element={walletsEnabled ? <Navigate to="/?wallet=open" replace /> : <EmptyPage title="Wallet unavailable" description="Wallets are not enabled in this environment." />} />
       <Route path="*" element={<EmptyPage title="Page not found" description="Use Discover to return to the home page." />} />
     </Routes></main>
     <footer><span><ShieldCheck size={16} /> Private delivery with zkbytes</span><span role="status">{availability}</span></footer>
-  </div>;
+  </div></CommerceProvider></ApprovalProvider>;
 }
 function EmptyPage({ title, description }: { title: string; description: string }) {
   return <section className="page-intro"><p className="eyebrow">PAYUNLOCK</p><h1>{title}</h1><p>{description}</p><Link className="discover-link" to="/">Back to Discover <ArrowUpRight size={18} /></Link></section>;

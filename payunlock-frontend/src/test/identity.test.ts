@@ -6,18 +6,15 @@ import {
   deriveItemKeys,
   normalizeAndVerifyMasterSignature,
   encodeBase64,
-  clearItemKeys,
-} from "@zkbytes/sdk";
+  clearItemKeys } from "@zkbytes/sdk";
 import {
   deriveIdentity,
   identityMessage,
-  validateLabel,
-} from "@/exchange/identity";
+  validateLabel } from "@/exchange/identity";
 import {
   createReceiveCard,
   parseReceiveCard,
-  serializeReceiveCard,
-} from "@/exchange/receive-card";
+  serializeReceiveCard } from "@/exchange/receive-card";
 import type { LabWalletSession } from "@/wallet/types";
 const wallet = new Wallet("0x" + "0".repeat(63) + "1");
 const session: LabWalletSession = {
@@ -26,8 +23,7 @@ const session: LabWalletSession = {
   transport: "fixture",
   address: wallet.address,
   signMessage: (message) => wallet.signMessage(message),
-  disconnect: async () => {},
-};
+  disconnect: async () => {} };
 describe("receiving identity v1", () => {
   it("restores a stable public fixture and separates labels, accounts and item keys", async () => {
     const first = await deriveIdentity(session, "personal", () => true);
@@ -43,8 +39,7 @@ describe("receiving identity v1", () => {
       {
         ...session,
         address: other.address,
-        signMessage: (message) => other.signMessage(message),
-      },
+        signMessage: (message) => other.signMessage(message) },
       "personal",
       () => true,
     );
@@ -92,8 +87,7 @@ describe("receiving identity v1", () => {
             const signature = await wallet.signMessage(message);
             active = false;
             return signature;
-          },
-        },
+          } },
         "personal",
         () => active,
       ),

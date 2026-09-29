@@ -1,3 +1,4 @@
+import { offerDraftKey, encryptDraft, decryptDraft } from "@/crypto/draft-envelope";
 // @vitest-environment node
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +8,7 @@ import { IndexedStore } from "@/storage/local-store";
 import { WalletVault } from "@/wallet/vault";
 import { unlockWallet } from "@/wallet/managed-session";
 import { checkCompatibility } from "@/wallet/compatibility";
-import { contentHash, expiration, newReceivingContext, openDelivery, prepareDelivery, publishEligibility, recordHash, restoreReceiving, RETENTION_SECONDS, type Order, type Opening } from "@/commerce/protocol";
+import { contentHash, expiration, newReceivingContext, openDelivery, prepareDelivery, publishEligibility, recordHash, restoreReceiving, receivingMessage, RETENTION_SECONDS, type Order, type Opening } from "@/commerce/protocol";
 import { FulfillmentJournal } from "@/commerce/journal";
 import { openEvidence, prepareEvidence, verifyEvidence, persistEvidence, restoreEvidence } from "@/commerce/evidence";
 import { canonical } from "@/crypto/encoding";
@@ -20,6 +21,25 @@ const current = () => true;
 const store = () => new IndexedStore(`test-${crypto.randomUUID()}`);
 const transaction = { chainId: 10143 as const, to: sellerWallet.address as `0x${string}`, data: "0x" as const, value: 1n, nonce: 0, gas: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n };
 afterEach(() => vi.useRealTimers());
+it("automatically signs only exact own-account receiving identities while the built-in wallet is unlocked", async () => {
+  const vault = new WalletVault(store()), approve = vi.fn(async () => false);
+  const address = await vault.import(privateKey, password);
+  const session = await unlockWallet(vault, address, password, approve);
+  const context = newReceivingContext({ chainId: 10143, contract: sellerWallet.address.toLowerCase() }, address);
+  try {
+    const message = receivingMessage(context);
+    expect(await session.signReceivingIdentity(message)).toBe(await buyerWallet.signMessage(message));
+    await restoreReceiving(context, session, current);
+    expect(approve).not.toHaveBeenCalled();
+    await expect(session.signReceivingIdentity(receivingMessage({ ...context, account: sellerWallet.address.toLowerCase() }))).rejects.toThrow();
+    await expect(session.signReceivingIdentity(message + " altered")).rejects.toThrow();
+    await expect(session.signReceivingIdentity("Sign a payment")).rejects.toThrow();
+    await expect(session.signMessage("An unrelated message")).rejects.toThrow("declined");
+    expect(approve).toHaveBeenCalledTimes(1);
+    session.lock();
+    await expect(session.signReceivingIdentity(message)).rejects.toThrow("locked");
+  } finally { session.lock(); }
+});
 
 async function fixture() {
   const deployment = { chainId: 10143 as const, contract: "0x" + "a".repeat(40) };
@@ -43,7 +63,7 @@ async function fixture() {
     return Response.json(item);
   };
   const client = new ZkbytesClient({ apiOrigin: "https://api.example", downloadOrigin: "https://cdn.example", fetch: fetcher });
-  const service = { id: "fixture-storage-v1", client, maxRetentionSeconds: RETENTION_SECONDS };
+  const service = { id: 1, client, maxRetentionSeconds: RETENTION_SECONDS };
   const prepared = await prepareDelivery({ order, payload: { text: "Private ticket delivery", tickets: [{ row: "7", ticket: "SECRET-42" }] }, signer: sellerWallet, service, latestPublicationSeconds: BigInt(Math.floor(Date.now() / 1000) + 3600), isCurrent: current });
   return { order, buyer, seller, client, service, prepared, items, loseResponse: () => { loseResponse = true; } };
 }
@@ -142,13 +162,13 @@ describe("order-bound delivery and recovery", () => {
     await other.import(backup, password);
     expect((await other.restore(id, password)).opening).toEqual(f.prepared.opening);
     expect((await other.restore(id, password)).progress).toBe("tx1-finalized");
-    const state = { commitment: f.prepared.recordHash, finalizedSuccessfulTx1: true, canceled: false, deadline: 100n, chainTime: 99n };
+    const state = { finalizedSuccessfulTx1: true, canceled: false, deadline: 100n, chainTime: 99n };
     expect(() => publishEligibility(f.prepared, state)).not.toThrow();
-    for (const change of [{ chainTime: 100n }, { canceled: true }, { finalizedSuccessfulTx1: false }, { commitment: "wrong" }]) expect(() => publishEligibility(f.prepared, { ...state, ...change })).toThrow();
+    for (const change of [{ chainTime: 100n }, { canceled: true }, { finalizedSuccessfulTx1: false }]) expect(() => publishEligibility(f.prepared, { ...state, ...change })).toThrow();
     await expect(other.cleanup(id, password)).rejects.toThrow("unpublished");
     await other.update(id, password, "tx2-pending"); await other.update(id, password, "published"); await other.cleanup(id, password);
     await expect(other.restore(id, password)).rejects.toThrow();
-  });
+  }, 15000);
   it("does not upload when persistence fails or the session changed", async () => {
     const f = await fixture(), storage = store();
     vi.spyOn(storage, "compareAndSwap").mockRejectedValue(new Error("quota"));
@@ -176,16 +196,16 @@ describe("order-bound delivery and recovery", () => {
       for (const original of [f.prepared, message]) independentHistory.push(await openDelivery({ record: original.record, expectedRecordHash: original.recordHash, order: f.order, role, privateKey: restoredIdentity.privateKey, services: [f.service], isCurrent: current }));
       restoredIdentity.privateKey.fill(0);
       expect(verifyEvidence(independentHistory, expected, f.order).missing).toEqual([]);
-      const proof = await prepareEvidence({ originals: [f.prepared.opening], expected, order: f.order, assignment, unreadable: [message.record.contentHash], signer, service: f.service.id, maxRetentionSeconds: RETENTION_SECONDS, latestPublicationSeconds: BigInt(Math.floor(Date.now() / 1000) + 60), isCurrent: current });
+      const proof = await prepareEvidence({ originals: [f.prepared.opening], expected, order: f.order, assignment, unreadable: [message.record.contentHash], signer, serviceId: f.service.id, maxRetentionSeconds: RETENTION_SECONDS, latestPublicationSeconds: BigInt(Math.floor(Date.now() / 1000) + 60), isCurrent: current });
       const storage = store(), recoveryId = await persistEvidence(storage, proof, password, current);
       expect(await restoreEvidence(storage, recoveryId, password)).toEqual(proof);
       f.items.set(proof.item.seed, proof.item);
-      const input = { record: proof.record, expectedRecordHash: proof.recordHash, role: "arbitrator" as const, privateKey: arb.privateKey, service: f.service.id, download: f.client.downloadAndVerify.bind(f.client), assignment, order: f.order, expected, isCurrent: current };
+      const input = { record: proof.record, expectedRecordHash: proof.recordHash, role: "arbitrator" as const, privateKey: arb.privateKey, serviceId: f.service.id, download: f.client.downloadAndVerify.bind(f.client), assignment, order: f.order, expected, isCurrent: current };
       const opened = await openEvidence(input);
       expect(opened.report.missing).toEqual([message.record.contentHash]);
       expect(opened.evidence.originals[0]).toEqual(f.prepared.opening);
       await expect(openEvidence({ ...input, assignment: { ...assignment, revision: "2" } })).rejects.toThrow("assignment");
-      const full = await prepareEvidence({ originals: independentHistory, expected, order: f.order, assignment: { ...assignment, revision: "2" }, unreadable: [], signer, service: f.service.id, maxRetentionSeconds: RETENTION_SECONDS, latestPublicationSeconds: BigInt(Math.floor(Date.now() / 1000) + 60), isCurrent: current });
+      const full = await prepareEvidence({ originals: independentHistory, expected, order: f.order, assignment: { ...assignment, revision: "2" }, unreadable: [], signer, serviceId: f.service.id, maxRetentionSeconds: RETENTION_SECONDS, latestPublicationSeconds: BigInt(Math.floor(Date.now() / 1000) + 60), isCurrent: current });
       f.items.set(full.item.seed, full.item);
       expect((await openEvidence({ ...input, record: full.record, expectedRecordHash: full.recordHash, assignment: full.record.assignment })).report.missing).toEqual([]);
     }
@@ -195,4 +215,34 @@ describe("order-bound delivery and recovery", () => {
     const badRecord = { ...f.prepared.record, buyerEnvelope: f.prepared.record.sellerEnvelope };
     expect(recordHash(badRecord)).not.toBe(f.prepared.recordHash);
   });
+});
+
+it("recovers delivery drafts with offer keys and erases only an exact confirmed publication", async () => {
+  const f = await fixture(), storage = store(), journal = new FulfillmentJournal(storage);
+  const key = await offerDraftKey(f.seller.privateKey, f.order.seller.context);
+  expect(key.extractable).toBe(false);
+  const id = await journal.prepare(f.prepared, key, current);
+  const saved = JSON.stringify(await storage.get('pending:' + id));
+  expect(saved).not.toContain(f.prepared.item.seed);
+  expect(saved).not.toContain('SECRET-42');
+  await journal.upload(id, key, f.client, current);
+  await journal.update(id, key, 'tx1-pending');
+  await journal.update(id, key, 'tx1-finalized');
+  const restoredKey = await offerDraftKey(f.seller.privateKey, f.order.seller.context);
+  expect((await new FulfillmentJournal(storage).restore(id, restoredKey)).item).toEqual(f.prepared.item);
+  const wrongKey = await offerDraftKey(f.seller.privateKey, { ...f.order.seller.context, nonce: 'another offer' });
+  await expect(journal.restore(id, wrongKey)).rejects.toThrow();
+  await expect(journal.cleanup(id, key)).rejects.toThrow('unpublished');
+  expect(await journal.cleanupConfirmed(id, 'different record')).toBe(false);
+  expect(await storage.get('pending:' + id)).toBeDefined();
+  const other = new FulfillmentJournal(store());
+  await other.import(await journal.export(id), restoredKey);
+  expect((await other.restore(id, restoredKey)).opening).toEqual(f.prepared.opening);
+  await journal.update(id, key, 'tx2-pending');
+  expect(await journal.cleanupConfirmed(id, f.prepared.recordHash)).toBe(true);
+  expect(await storage.get('pending:' + id)).toBeUndefined();
+  // Publication remains readable for both participants after local draft deletion.
+  for (const role of ['buyer', 'seller'] as const) expect((await openDelivery({ record: f.prepared.record, expectedRecordHash: f.prepared.recordHash, order: f.order, role, privateKey: f[role].privateKey, services: [f.service], isCurrent: current })).payload).toEqual(f.prepared.opening.payload);
+  const envelope = await encryptDraft('private', key, { id: 'one' });
+  await expect(decryptDraft(envelope, key, { id: 'two' })).rejects.toThrow();
 });

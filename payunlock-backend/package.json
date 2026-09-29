@@ -12,18 +12,26 @@
     "start:worker": "node --env-file-if-exists=../.env dist/worker.js",
     "test": "vitest run",
     "test:db": "node --env-file-if-exists=../.env --import tsx scripts/check-database.ts",
+    "test:integration": "node --env-file-if-exists=../.env scripts/test-integration.mjs",
+    "check:phase4": "node --env-file-if-exists=../.env --import tsx scripts/check-phase4.ts",
     "db:migrate": "node --env-file-if-exists=../.env --import tsx src/database/migrate.ts up",
+    "db:reset:dev": "node --env-file=../.env --import tsx scripts/reset-development-database.ts",
+    "relayer:key:create": "node --import tsx scripts/create-relayer-key.ts",
     "db:migrate:prod": "node --env-file-if-exists=../.env dist/database/migrate.js up"
   },
   "dependencies": {
-    "@payunlock/api-contracts": "workspace:*",
     "@fastify/cors": "11.3.0",
+    "@payunlock/api-contracts": "workspace:*",
+    "ethers": "6.17.0",
     "fastify": "5.12.5",
     "fastify-plugin": "6.0.0",
     "fastify-type-provider-zod": "7.0.0",
     "node-pg-migrate": "9.0.0",
     "pg": "8.23.0",
+    "sharp": "0.35.4",
     "zod": "4.6.5"
   },
-  "devDependencies": { "@types/pg": "8.23.1" }
+  "devDependencies": {
+    "@types/pg": "8.23.1"
+  }
 }

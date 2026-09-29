@@ -6,8 +6,7 @@ import {
   randomBytes,
   signingDescriptor,
   encryptPayload,
-  wrapAesKey,
-} from "@zkbytes/sdk";
+  wrapAesKey } from "@zkbytes/sdk";
 import { deriveIdentity } from "@/exchange/identity";
 import { createReceiveCard } from "@/exchange/receive-card";
 import {
@@ -16,12 +15,10 @@ import {
   sealedReferenceLink,
   parseSealedReferenceFragment,
   parseSealedReference,
-  MAX_ENVELOPE_BYTES,
-} from "@/exchange/sealed-reference";
+  MAX_ENVELOPE_BYTES } from "@/exchange/sealed-reference";
 const origins = {
   apiOrigin: "https://api.example.com",
-  downloadOrigin: "https://files.example.com",
-};
+  downloadOrigin: "https://files.example.com" };
 async function fixture() {
   const wallet = new Wallet("0x" + "0".repeat(63) + "1");
   const identity = await deriveIdentity(
@@ -31,8 +28,7 @@ async function fixture() {
       transport: "fixture",
       address: wallet.address,
       signMessage: (message) => wallet.signMessage(message),
-      disconnect: async () => {},
-    },
+      disconnect: async () => {} },
     "personal",
     () => true,
   );
@@ -48,8 +44,7 @@ async function fixture() {
         0xc9, 0x64, 0x07, 0x3a, 0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25,
         0xaf, 0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a,
       ]),
-    ),
-  };
+    ) };
   const envelope = await sealReference(
     reference,
     createReceiveCard(identity.publicKey),
@@ -123,8 +118,7 @@ describe("sealed references", () => {
     await expect(
       openSealedReference(JSON.stringify(envelope), identity.privateKey, {
         ...origins,
-        apiOrigin: "https://other.example.com",
-      }),
+        apiOrigin: "https://other.example.com" }),
     ).rejects.toThrow();
     identity.privateKey.fill(0);
   });
@@ -151,8 +145,7 @@ describe("sealed references", () => {
           JSON.stringify({
             ...envelope,
             encryptedKey: wrapped.encryptedKey,
-            encryptedPayload: encrypted.encryptedPayload,
-          }),
+            encryptedPayload: encrypted.encryptedPayload }),
           identity.privateKey,
           origins,
         ),

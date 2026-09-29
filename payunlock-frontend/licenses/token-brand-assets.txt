@@ -1,0 +1,7 @@
+MON and USDC logos are used for token identification. Trademarks belong to their respective owners.
+Sources (downloaded 2026-09-27):
+https://github.com/monad-crypto/token-list/blob/main/tokenlist-testnet.json
+https://raw.githubusercontent.com/monad-crypto/token-list/refs/heads/main/mainnet/MON/logo.svg
+https://raw.githubusercontent.com/monad-crypto/token-list/refs/heads/main/mainnet/USDC/logo.svg
+USDC testnet address verified against Circle:
+https://www.circle.com/multi-chain-usdc/monad

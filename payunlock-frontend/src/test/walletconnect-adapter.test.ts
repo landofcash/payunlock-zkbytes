@@ -2,8 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createWalletConnectAdapter,
-  type WalletConnectKit,
-} from "@/wallet/walletconnect-adapter";
+  type WalletConnectKit } from "@/wallet/walletconnect-adapter";
 import { readReownProjectId } from "@/config/reown";
 
 const address = "0x1111111111111111111111111111111111111111";
@@ -14,14 +13,12 @@ function setup() {
   const stateListeners = new Set<(value: { open: boolean }) => void>();
   const networkListeners = new Set<() => void>();
   let account: { address?: string; isConnected: boolean } = {
-    isConnected: false,
-  };
+    isConnected: false };
   let chain = 10143;
   let present = false;
   const request = vi.fn(
     async ({
-      method,
-    }: {
+      method }: {
       method: string;
       params?: unknown[];
     }): Promise<unknown> =>
@@ -64,8 +61,7 @@ function setup() {
     subscribeNetwork: (fn: () => void) => {
       networkListeners.add(fn);
       return () => networkListeners.delete(fn);
-    },
-  };
+    } };
   const adapter = createWalletConnectAdapter(
     async () => kit as unknown as WalletConnectKit,
   );
@@ -92,11 +88,28 @@ function setup() {
       const pending = adapter.connect();
       await vi.waitFor(() => expect(kit.open).toHaveBeenCalled());
       return { pending };
-    },
-  };
+    } };
 }
 
 describe("WalletConnect adapter", () => {
+  it("submits on Monad when the WalletConnect provider reports a numeric chain ID", async () => {
+    const fixture = setup();
+    const { pending } = await fixture.start();
+    fixture.account(); fixture.provider();
+    const session = await pending;
+    const hash = `0x${"ab".repeat(32)}`;
+    fixture.request.mockImplementation(async ({ method }) => {
+      if (method === "eth_accounts") return [address];
+      if (method === "eth_chainId") return 10143;
+      if (method === "eth_sendTransaction") return hash;
+      throw new Error("Unexpected method");
+    });
+    const tx = { chainId: 10143 as const, to: other as `0x${string}`, data: "0x" as const, value: 1n, nonce: 0, gas: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n };
+    try {
+      await expect(session.sendTransaction!(tx)).resolves.toBe(hash);
+      expect(fixture.request).toHaveBeenCalledWith({ method: "eth_sendTransaction", params: [expect.objectContaining({ chainId: "0x279f", from: address, to: other, value: "0x1" })] });
+    } finally { session.dispose?.(); }
+  });
   it("waits for connector initialization before opening the dialog", async () => {
     const fixture = setup();
     let ready!: () => void;
@@ -130,15 +143,13 @@ describe("WalletConnect adapter", () => {
     await session.signMessage("hi\nπ");
     expect(fixture.request).toHaveBeenCalledWith({
       method: "personal_sign",
-      params: ["0x68690acf80", address],
-    });
+      params: ["0x68690acf80", address] });
   });
   it("cancels a closed QR modal and releases its subscriptions", async () => {
     const fixture = setup();
     const { pending } = await fixture.start();
     const rejection = expect(pending).rejects.toMatchObject({
-      kind: "cancelled",
-    });
+      kind: "cancelled" });
     await fixture.kit.close();
     await rejection;
     expect(fixture.kit.resetWalletConnectUri).toHaveBeenCalledOnce();
@@ -166,8 +177,7 @@ describe("WalletConnect adapter", () => {
     fixture.account();
     fixture.provider();
     const rejection = expect(pending).rejects.toMatchObject({
-      kind: "cancelled",
-    });
+      kind: "cancelled" });
     await fixture.kit.disconnect();
     await fixture.kit.close();
     await rejection;
@@ -194,8 +204,7 @@ describe("WalletConnect adapter", () => {
       return [address];
     });
     await expect(session.signMessage("test")).rejects.toMatchObject({
-      kind: "wrong-account",
-    });
+      kind: "wrong-account" });
     expect(events).toHaveBeenCalledWith("accountsChanged");
     fixture.chain(1);
     expect(events).toHaveBeenCalledWith("chainChanged");
@@ -208,8 +217,7 @@ describe("WalletConnect adapter", () => {
     const fixture = setup();
     fixture.kit.open.mockRejectedValueOnce({ code: 4001 });
     await expect(fixture.adapter.connect()).rejects.toMatchObject({
-      code: 4001,
-    });
+      code: 4001 });
     expect(fixture.stateListeners.size).toBe(0);
   });
   it("rejects missing and placeholder configuration", () => {
