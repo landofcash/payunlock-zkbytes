@@ -2,6 +2,10 @@
 
 Project: `payunlock.zkbytes.com`. Production follows `landofcash/payunlock-zkbytes` on `main`.
 
+First release verified on 2026-09-29: `https://payunlock.zkbytes.com` and
+`https://api.payunlock.zkbytes.com` have valid Railway certificates. The API
+serves `/ready` and lists zkbytes storage service 1 for new offers.
+
 | Service | Source / image | Port | Health check |
 | --- | --- | ---: | --- |
 | `payunlock-zkbytes` | `Dockerfile.frontend` | 3000 | `/` |
