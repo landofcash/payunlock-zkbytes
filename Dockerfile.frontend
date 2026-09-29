@@ -1,0 +1,14 @@
+FROM node:24.11.0-bookworm-slim AS build
+WORKDIR /app
+RUN corepack enable
+COPY . .
+RUN pnpm install --frozen-lockfile
+ARG VITE_API_ORIGIN
+ARG VITE_CHAIN_ID=10143
+ARG VITE_WALLETS_ENABLED=true
+ARG VITE_REOWN_PROJECT_ID
+RUN test -n "$VITE_API_ORIGIN" && pnpm --filter @payunlock/api-contracts build && pnpm --filter @payunlock/frontend build
+
+FROM caddy:2-alpine
+COPY Caddyfile.frontend /etc/caddy/Caddyfile
+COPY --from=build /app/payunlock-frontend/dist /srv

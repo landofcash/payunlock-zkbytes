@@ -9,5 +9,8 @@ COPY payunlock-contract/package.json payunlock-contract/package.json
 COPY packages/api-contracts/package.json packages/api-contracts/package.json
 RUN pnpm install --frozen-lockfile --filter @payunlock/indexer...
 COPY tsconfig.base.json ./
+COPY payunlock-contract/abi/ ./payunlock-contract/abi/
+COPY payunlock-indexer/ ./payunlock-indexer/
 WORKDIR /workspace/payunlock-indexer
+RUN node node_modules/envio/bin.mjs codegen
 CMD ["node", "node_modules/envio/bin.mjs", "start"]

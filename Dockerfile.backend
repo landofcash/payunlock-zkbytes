@@ -1,0 +1,8 @@
+FROM node:24.11.0-bookworm-slim
+WORKDIR /app
+RUN corepack enable
+COPY . .
+RUN pnpm install --frozen-lockfile \
+    && pnpm --filter @payunlock/api-contracts build \
+    && pnpm --filter @payunlock/backend build
+CMD ["pnpm", "--filter", "@payunlock/backend", "start"]
