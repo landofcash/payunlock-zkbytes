@@ -7,6 +7,9 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    env:
+      ENVIO_PG_PASSWORD: ci-only-indexer-password
+      ENVIO_HASURA_ADMIN_SECRET: ci-only-indexer-admin-secret
     services:
       postgres:
         image: postgres:17.11-bookworm
