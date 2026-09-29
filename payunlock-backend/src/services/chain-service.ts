@@ -11,6 +11,8 @@ export const escrowAddress = deployment.escrow.toLowerCase();
 export const deploymentKey = `${deployment.chainId}:${escrowAddress}`;
 export const escrowInterface = new Interface(artifact.abi);
 const iface = escrowInterface;
+const routerInterface = new Interface(["event ActionExecuted(address indexed actor,bytes32 indexed nonce,bytes4 indexed selector,bytes32 actionHash)"]);
+const reservationSelectors = new Set([iface.getFunction("reserveDelivery")!.selector, iface.getFunction("reserveDeliveries")!.selector]);
 const plain = <T>(value: unknown): T => JSON.parse(json(value)) as T;
 class RpcRevert extends Error { constructor(public data: string | undefined) { super("RPC_REVERT"); } }
 type Receipt = { status: string; blockNumber: string; blockHash: string; transactionHash: string; to: string; from: string; logs: { address: string; topics: string[]; data: string }[] };
@@ -127,7 +129,7 @@ export class ChainService {
   async batchPublication(items: { orderId: string; reservationTransaction: string }[], wallet: string, latest: ChainSnapshot[]) {
     const finalized = await this.orders(items.map(i => i.orderId));
     const transactions = new Map<string, Awaited<ReturnType<ChainService["transaction"]>>>();
-    for (const hash of new Set(items.map(i => i.reservationTransaction))) transactions.set(hash, await this.transaction(hash, wallet));
+    for (const hash of new Set(items.map(i => i.reservationTransaction))) transactions.set(hash, await this.transaction(hash, wallet, escrowAddress, true));
     return items.map((item, i) => {
       const tx = transactions.get(item.reservationTransaction)!;
       if (tx.status !== "finalized_success") return false;
@@ -144,11 +146,20 @@ export class ChainService {
     if (snapshot.order.buyer !== buyer || snapshot.order.requestId !== requestId) throw new ApiError(503, "CHAIN_UNCERTAIN");
     return { status: "finalized" as const, orderId: id, snapshot };
   }
-  async transaction(hash: string, wallet: string, target = escrowAddress) {
+  async transaction(hash: string, wallet: string, target = escrowAddress, allowRelayedReservation = false) {
     const block = await this.anchor();
     const receipt = await this.rpc<Receipt | null>("eth_getTransactionReceipt", [hash]);
     if (!receipt) return { status: "uncertain" as const };
-    if (receipt.from.toLowerCase() !== wallet || receipt.to?.toLowerCase() !== target) throw new ApiError(403, "TRANSACTION_NOT_OWNED");
+    const direct = receipt.from.toLowerCase() === wallet && receipt.to?.toLowerCase() === target;
+    const relayedReservation = allowRelayedReservation && target === escrowAddress && !!deployment.router &&
+      receipt.to?.toLowerCase() === deployment.router.toLowerCase() && receipt.logs.some(log => {
+        if (log.address.toLowerCase() !== deployment.router!.toLowerCase()) return false;
+        try {
+          const event = routerInterface.parseLog(log);
+          return event?.name === "ActionExecuted" && String(event.args.actor).toLowerCase() === wallet && reservationSelectors.has(String(event.args.selector));
+        } catch { return false; }
+      });
+    if (!direct && !relayedReservation) throw new ApiError(403, "TRANSACTION_NOT_OWNED");
     if (receipt.transactionHash.toLowerCase() !== hash.toLowerCase()) throw new ApiError(503, "CHAIN_UNCERTAIN");
     if (Number(BigInt(receipt.blockNumber)) > block.number) return { status: "provisional" as const };
     const canonical = await this.block(receipt.blockNumber);
@@ -159,7 +170,7 @@ export class ChainService {
       blockNumber: canonical.number, blockHash: canonical.hash, receipt };
   }
   async publication(id: string, txHash: string, wallet: string) {
-    const tx = await this.transaction(txHash, wallet);
+    const tx = await this.transaction(txHash, wallet, escrowAddress, true);
     if (tx.status !== "finalized_success") return { eligible: false, reason: tx.status };
     const commitment = tx.receipt.logs.filter(l => l.address.toLowerCase() === escrowAddress).map(l => { try { return iface.parseLog(l); } catch { return null; } }).find(l => l?.name === "DeliveryReserved" && String(l.args.orderId) === id);
     const [finalized, latest] = await Promise.all([this.order(id), this.order(id, "latest")]);

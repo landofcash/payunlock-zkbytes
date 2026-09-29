@@ -193,6 +193,29 @@ it('gives the seller a prepare-review flow without prompting the wallet for prev
   expect(within(dialog).getByText(/two transactions/)).toBeInTheDocument();
   expect(mocks.runOfferKeysOperation).not.toHaveBeenCalled();
 });
+it('opens seller delivery transaction review in a dialog after preparing content', async () => {
+  mocks.address = seller; view.order.state = 1; view.eligibility = {};
+  mocks.runOfferKeysOperation.mockImplementation(async (_context, _publicKey, action) => action({}, { address: seller }, () => true));
+  mocks.prepareDelivery.mockImplementation(async ({ order, kind, turn, payload }) => ({
+    record: { order, kind, turn, sender: seller, serviceId: 1 }, recordHash: 'delivery-hash',
+    item: { seed: 'seed' }, opening: { payload },
+  }));
+  mocks.upload.mockResolvedValue({});
+  const request = mocks.request.getMockImplementation()!;
+  mocks.request.mockImplementation(async (path: string, ...args: unknown[]) => path === '/transactions/prepare'
+    ? { chainId: 10143, to: '0x3333333333333333333333333333333333333333', data: '0x', value: '0', gas: '21000', nonce: 0, maxFeePerGas: '1000000000', maxPriorityFeePerGas: '100000000', balance: '1000000000000000000' }
+    : request(path, ...args));
+  mount();
+  fireEvent.click(await screen.findByRole('button', { name: 'Prepare delivery' }));
+  const composer = screen.getByRole('dialog', { name: 'Prepare delivery' });
+  fireEvent.change(within(composer).getByLabelText('Delivery content'), { target: { value: 'Access code: ABC' } });
+  fireEvent.click(within(composer).getByRole('button', { name: 'Review content' }));
+  fireEvent.click(within(composer).getByRole('button', { name: 'Send delivery' }));
+  const review = await screen.findByRole('dialog', { name: 'Delivery processing' });
+  expect(within(review).getByText('Choose how to submit')).toBeInTheDocument();
+  expect(within(review).getByRole('button', { name: 'Confirm in wallet and pay gas' })).toBeInTheDocument();
+  expect(document.querySelectorAll('.order-pending .transaction-panel')).toHaveLength(0);
+});
 it('keeps case tools contextual and replaces sequence entry with selectable messages', async () => {
   view.order.state = 4; view.eligibility = { requestArbitration: true }; mocks.rows = [{ turn: '0', sender: seller }, { turn: '1', sender: buyer }]; mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Explore arbitration' }));
@@ -323,6 +346,18 @@ it('reopens a saved arbitration action in a transaction dialog', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Check transaction status' }));
   expect(screen.getByRole('dialog', { name: 'Arbitration transaction' })).toHaveTextContent('Checking transaction');
   expect(document.querySelectorAll('.order-pending .transaction-panel')).toHaveLength(0);
+});
+it('reopens a saved seller delivery transaction in its dialog', async () => {
+  mocks.address = seller; view.order.state = 2; view.order.publicationDeadline = '500'; view.eligibility = {};
+  mocks.ops = [{ id: 'lifecycle:saved-delivery', account: seller, deployment: { chainId: 10143, contract: '0x3333333333333333333333333333333333333333' }, orderId: '7', action: { kind: 'reserveDelivery', orderId: '7' }, hashes: [], progress: 'checking', version: 1 }];
+  mount();
+  fireEvent.click(await screen.findByRole('button', { name: 'Check delivery status' }));
+  const dialog = screen.getByRole('dialog', { name: 'Delivery processing' });
+  expect(within(dialog).getByText('Checking transaction')).toBeInTheDocument();
+  expect(document.querySelectorAll('.order-pending .transaction-panel')).toHaveLength(0);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Close dialog' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Check delivery status' }));
+  expect(screen.getByRole('dialog', { name: 'Delivery processing' })).toBeInTheDocument();
 });
 it('offers a way to check a saved refund after reopening the order', async () => {
   view.order.state = 1; view.eligibility = { claimRefund: true };

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, type ChainSnapshot } from "../src/domain.js";
-import { ChainService, eligibility, escrowAddress } from "../src/services/chain-service.js";
+import { ChainService, deployment, eligibility, escrowAddress, escrowInterface } from "../src/services/chain-service.js";
 import { Interface } from "ethers";
 const hash = `0x${"11".repeat(32)}`, otherHash = `0x${"22".repeat(32)}`;
 const wallet = "0x1111111111111111111111111111111111111111";
@@ -43,6 +43,25 @@ describe("finality and failure boundaries", () => {
     expect((await fixture({ eth_getTransactionReceipt: { ...receipt, blockHash: otherHash } }).chain.transaction(hash, wallet)).status).toBe("uncertain");
     await expect(fixture({ eth_getTransactionReceipt: { ...receipt, from: escrowAddress } }).chain.transaction(hash, wallet)).rejects.toMatchObject({ statusCode: 403 });
     expect((await fixture({ eth_getTransactionReceipt: { ...receipt, status: "0x0" } }).chain.transaction(hash, wallet)).status).toBe("finalized_revert");
+  });
+  it.skipIf(!deployment.router)("accepts only the seller's finalized router reservation for publication", async () => {
+    const { receipt } = fixture();
+    const router = new Interface(["event ActionExecuted(address indexed actor,bytes32 indexed nonce,bytes4 indexed selector,bytes32 actionHash)"]);
+    const reservation = new Interface(["event DeliveryReserved(uint256 indexed orderId,uint64 publicationDeadline)"]);
+    const routerLog = (actor: string, selector: string) => ({ ...router.encodeEventLog(router.getEvent("ActionExecuted")!, [actor, hash, selector, hash]), address: deployment.router! });
+    const reserved = { ...reservation.encodeEventLog(reservation.getEvent("DeliveryReserved")!, [5, 200]), address: escrowAddress };
+    const relayed = { ...receipt, from: "0x2222222222222222222222222222222222222222", to: deployment.router!, logs: [routerLog(wallet, escrowInterface.getFunction("reserveDeliveries")!.selector), reserved] };
+    const snapshot = { block: { number: 32, hash, timestamp: 100 }, canceled: false, order: { state: 2, seller: wallet, publicationDeadline: "200" } } as ChainSnapshot;
+    const accepted = fixture({ eth_getTransactionReceipt: relayed }).chain;
+    vi.spyOn(accepted, "orders").mockResolvedValue([snapshot]);
+    expect(await accepted.batchPublication([{ orderId: "5", reservationTransaction: hash }], wallet, [snapshot])).toEqual([true]);
+    await expect(accepted.transaction(hash, wallet)).rejects.toMatchObject({ code: "TRANSACTION_NOT_OWNED" });
+    for (const logs of [[routerLog("0x3333333333333333333333333333333333333333", escrowInterface.getFunction("reserveDeliveries")!.selector), reserved],
+      [routerLog(wallet, escrowInterface.getFunction("publishDeliveries")!.selector), reserved], [reserved]]) {
+      const chain = fixture({ eth_getTransactionReceipt: { ...relayed, logs } }).chain;
+      vi.spyOn(chain, "orders").mockResolvedValue([snapshot]);
+      await expect(chain.batchPublication([{ orderId: "5", reservationTransaction: hash }], wallet, [snapshot])).rejects.toMatchObject({ code: "TRANSACTION_NOT_OWNED" });
+    }
   });
   it("does not accept a receipt above the finalized height", async () => {
     const { receipt } = fixture();
