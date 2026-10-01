@@ -9,8 +9,7 @@ a:focus-visible { outline: 3px solid var(--accent); outline-offset: 5px; border-
 .app-shell { max-width: 1240px; margin: auto; padding: 0 40px; min-height: 100svh; display: flex; flex-direction: column; }
 header { min-height: 96px; display: flex; align-items: center; gap: 32px; border-bottom: 1px solid var(--border); }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 750; font-size: 21px; letter-spacing: -.6px; }
-.brand-icon { display: grid; place-items: center; background: var(--accent); color: var(--on-accent); width: 35px; height: 35px; border-radius: 11px; }
-.preview-label { font-size: 10px; font-weight: 500; letter-spacing: 0; color: var(--muted); border: 1px solid var(--border); padding: 3px 6px; border-radius: 5px; }
+.brand-icon { flex: none; background: var(--accent); width: 35px; height: 35px; mask: url("/logo.svg") center / contain no-repeat; }
 nav { display: flex; gap: 26px; margin-left: auto; font-size: 14px; color: var(--muted); }
 nav a { padding: 8px 0; } nav .active { color: var(--accent); border-bottom: 2px solid var(--accent); }
 .network { font-size: 11px; color: var(--muted); background: var(--surface-alt); padding: 7px 10px; border-radius: 20px; white-space: nowrap; }
@@ -300,7 +299,7 @@ footer { border-top: 1px solid var(--border); margin-top: 26px; color: var(--mut
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
 @media (max-width: 1000px) { header { flex-wrap: wrap; padding: 18px 0 10px; gap: 14px; } header nav { order: 3; width: 100%; justify-content: center; margin: 0; } .wallet-nav { margin-left: auto; } .hero-grid { gap: 24px; } }
 @media (max-width: 760px) { .app-shell { padding: 0 18px; } .hero-grid, .wallet-layout { grid-template-columns: 1fr; } .hero-grid { padding: 22px 0 38px; gap: 10px; } .hero { padding: 10px 0 20px; } .hero h1 { font-size: 42px; } .delivery-illustration { max-width: 550px; width: 100%; } .page-heading { flex-wrap: wrap; } .wallet-page { margin-top: 24px; } .wallet-summary { padding: 20px; } .commerce-page > form { padding: 18px; } }
-@media (max-width: 440px) { nav a { padding: 8px 6px; font-size: 11px; gap: 4px; } header nav { gap: 2px; } nav a svg { width: 13px; } .preview-label { display: none; } .hero h1 { font-size: 36px; } .illustration-footer span { display: none; } .illustration-path { padding: 28px 0; } .offer-grid { grid-template-columns: 1fr; } .page-heading { gap: 8px; } }
+@media (max-width: 440px) { nav a { padding: 8px 6px; font-size: 11px; gap: 4px; } header nav { gap: 2px; } nav a svg { width: 13px; } .hero h1 { font-size: 36px; } .illustration-footer span { display: none; } .illustration-path { padding: 28px 0; } .offer-grid { grid-template-columns: 1fr; } .page-heading { gap: 8px; } }
 /* Wallet cards and focused management dialogs */
 .wallet-provider-buttons { display: grid; gap: 10px; }
 body .wallet-provider-buttons .ui-button { justify-content: flex-start; margin: 0; padding: 14px 16px; }

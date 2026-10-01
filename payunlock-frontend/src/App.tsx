@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, Navigate, useLocation } from "react-router-dom";
-import { ArrowUpRight, LockKeyhole, ShieldCheck, Compass, ShoppingBag, Wallet } from "lucide-react";
+import { ArrowUpRight, ShieldCheck, Compass, ShoppingBag, Wallet } from "lucide-react";
 import { ThemeProvider, ThemePicker } from "./app/theme";
 import { HealthResponseSchema } from "@payunlock/api-contracts";
 import { lazy, Suspense } from "react";
@@ -40,7 +40,7 @@ function AppShell({ apiOrigin, walletsEnabled }: { apiOrigin: string; walletsEna
   }, [apiOrigin]);
   return <ApprovalProvider><CommerceProvider origin={apiOrigin}><div className="app-shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
-    <header><Link className="brand" to="/" aria-label="PayUnlock home"><span className="brand-icon"><LockKeyhole size={20} aria-hidden="true" /></span>PayUnlock<span className="preview-label">Preview</span></Link>
+    <header><Link className="brand" to="/" aria-label="PayUnlock home"><span className="brand-icon" aria-hidden="true" />PayUnlock</Link>
       <nav aria-label="Main navigation"><NavLink to="/discover"><Compass aria-hidden="true" />Discover</NavLink><NavLink to="/purchases"><ShoppingBag aria-hidden="true" />Purchases</NavLink><SellerMenu /></nav>
       <div className="header-actions"><ThemePicker />{walletsEnabled && <Suspense fallback={<span className="wallet-nav"><Wallet size={17} aria-hidden="true" />Sign in</span>}><WalletMenu /></Suspense>}</div>
     </header>
