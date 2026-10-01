@@ -1,9 +1,11 @@
-﻿import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { Eye, KeyRound, LockKeyhole, Plus, ShieldCheck, Trash2, Upload, Wallet, Scale, SlidersHorizontal, Check, Network, X, LogOut, ExternalLink } from "lucide-react";
 import { RecoveryBackup, RecoveryWarning } from "./RecoveryBackup";
 import { WalletBalances } from "./WalletBalances";
+import { AccountName } from "./AccountName";
+import { ACCOUNT_NAMES_EVENT, ACCOUNT_NAMES_KEY, ensureAccountNames, savedAccountNames, saveAccountName } from "./account-names";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CopyableField } from "@/components/CopyableField";
@@ -22,7 +24,7 @@ import walletConnectLogo from "@/assets/walletconnect.svg";
 
 const vault = new WalletVault(new IndexedStore());
 type Mode = "unlock" | "create" | "import" | "export" | "password" | "remove" | "passkey";
-const titles: Record<Mode, string> = { unlock: "Log in", create: "Create password account", passkey: "Create account with passkey", import: "Import", export: "Back up account", password: "Change password", remove: "Remove wallet" };
+const titles: Record<Mode, string> = { unlock: "Sign in", create: "Create password account", passkey: "Create account with passkey", import: "Import", export: "Back up account", password: "Change password", remove: "Remove wallet" };
 const actionIcons = { unlock: LockKeyhole, create: Plus, passkey: Plus, import: Upload, export: Eye, password: KeyRound, remove: Trash2 };
 const short = (address: string) => `${address.slice(0, 8)}...${address.slice(-6)}`;
 export function WalletMenu() {
@@ -30,6 +32,7 @@ export function WalletMenu() {
   const access = useCommerceAccess();
   const [address, setAddress] = useState<string | null>(null), [accounts, setAccounts] = useState<string[]>([]), [loading, setLoading] = useState(true);
   const [passkeyAccounts, setPasskeyAccounts] = useState(savedPasskeyAccounts);
+  const [accountNames, setAccountNames] = useState(savedAccountNames);
   const [password, setPassword] = useState(""), [nextPassword, setNextPassword] = useState(""), [confirmation, setConfirmation] = useState("");
   const [importText, setImportText] = useState(""), [mode, setMode] = useState<Mode | null>(null), [target, setTarget] = useState<string | null>(null);
   const [importKind, setImportKind] = useState<"phrase" | "key">("phrase");
@@ -92,6 +95,15 @@ export function WalletMenu() {
   useEffect(() => {
     if (wallet.session?.passkey) rememberPasskeyAccount({ address: wallet.session.address, ...wallet.session.passkey });
   }, [wallet.session]);
+  useEffect(() => {
+    if (!loading) setAccountNames(ensureAccountNames([...accounts, ...passkeyAccounts.map(account => account.address)]));
+  }, [loading, accounts, passkeyAccounts]);
+  useEffect(() => {
+    const refresh = () => setAccountNames(savedAccountNames());
+    const sync = (event: StorageEvent) => { if (event.key === ACCOUNT_NAMES_KEY || event.key === null) refresh(); };
+    window.addEventListener(ACCOUNT_NAMES_EVENT, refresh); window.addEventListener("storage", sync);
+    return () => { window.removeEventListener(ACCOUNT_NAMES_EVENT, refresh); window.removeEventListener("storage", sync); };
+  }, []);
   useEffect(() => { if (mode) dialog.current?.showModal(); else dialog.current?.close(); }, [mode]);
   useEffect(() => { if (!backup) return; const timer = setTimeout(() => setBackup(""), 60000); return () => clearTimeout(timer); }, [backup]);
   function openAction(value: Mode, account: string | null = shownAddress) { panel.current?.hidePopover(); revision.current++; clearSecrets(); setError(""); setTarget(account); setMode(value); setImportKind("phrase"); setBackedUp(false); setRemoveAddress(""); }
@@ -104,7 +116,7 @@ export function WalletMenu() {
       if (!mounted.current || started !== revision.current) { session.lock(); return; }
       await wallet.connectBuiltIn(session);
       if (action === "create") toast.success("Passkey account created. Save a recovery backup from your account menu.");
-    } catch (cause) { if (mounted.current && started === revision.current) setError(passkeyError(cause)); }
+    } catch (cause) { if (mounted.current && started === revision.current) setError(action === "signin" ? "Couldn’t sign in with a passkey. If you haven’t created an account yet, choose Create Account." : passkeyError(cause)); }
     finally { pending.current = false; if (mounted.current) setBusy(false); }
   }
   async function submit(event: FormEvent) {
@@ -118,7 +130,7 @@ export function WalletMenu() {
         if (mode === "import" && importKind === "key" && !/^(0x)?[\da-f]{64}$/i.test(input)) throw new Error("Enter a valid private key.");
         if (mode === "import" && importKind === "phrase" && ![12, 15, 18, 21, 24].includes(input.split(/\s+/).length)) throw new Error("Enter a valid recovery phrase.");
         const selected = mode === "create" ? await vault.create(password) : await vault.import(importKind === "key" && !input.startsWith("0x") ? `0x${input}` : input, password);
-        if (mounted.current) { await loadAccounts(); setAddress(selected); setTarget(selected); setMode("unlock"); toast.success(mode === "create" ? "Account created. Back it up before adding funds." : "Account imported. Log in to continue."); }
+        if (mounted.current) { await loadAccounts(); setAddress(selected); setTarget(selected); setMode("unlock"); toast.success(mode === "create" ? "Account created. Back it up before adding funds." : "Account imported. Sign in to continue."); }
       } else {
         if (!target) throw new Error("Choose a saved wallet first.");
         if (mode === "unlock") {
@@ -141,7 +153,7 @@ export function WalletMenu() {
   return <>
     <Button ref={trigger} icon={Wallet} variant="secondary" className="wallet-menu-trigger" aria-label={wallet.session ? "Account menu" : wallet.lastUsed ? `Sign in as ${short(wallet.lastUsed.address)}` : "Sign in"} aria-expanded={open} aria-controls="wallet-menu-panel" onClick={() => { if (open) panel.current?.hidePopover(); else showMenu(); }}><span>{wallet.session ? short(wallet.session.address) : wallet.lastUsed ? short(wallet.lastUsed.address) : "Sign in"}</span></Button>
     <div ref={panel} id="wallet-menu-panel" popover="auto" className="wallet-popover" role="dialog" aria-label="Wallet" onToggle={event => setOpen(event.newState === "open")}>
-      <div className="section-heading"><div><p className="eyebrow">{wallet.session ? (wallet.session.kind === "builtin" ? "BUILT-IN ACCOUNT" : "CONNECTED WALLET") : "GET STARTED"}</p><h2>{wallet.session ? "Your account" : "Login or Create Account"}</h2></div><div className="wallet-popover-header-actions">{wallet.session && <span className="network">Monad Testnet</span>}<Button icon={X} variant="ghost" size="icon" title="Close wallet menu" aria-label="Close wallet menu" onClick={() => panel.current?.hidePopover()} /></div></div>
+      <div className="section-heading"><div><p className="eyebrow">{wallet.session ? (wallet.session.kind === "builtin" ? "BUILT-IN ACCOUNT" : "CONNECTED WALLET") : "GET STARTED"}</p><h2>{wallet.session ? "Your account" : "Sign in existing account"}</h2></div><div className="wallet-popover-header-actions">{wallet.session && <span className="network">Monad Testnet</span>}<Button icon={X} variant="ghost" size="icon" title="Close wallet menu" aria-label="Close wallet menu" onClick={() => panel.current?.hidePopover()} /></div></div>
       {!mode && (wallet.error || error) && <p role="alert">{error || wallet.error}</p>}{wallet.notice && <p role="status">{wallet.notice}</p>}
       {wallet.session ? <div className="wallet-popover-connected">
         <section className="wallet-popover-info" aria-label="Wallet information">
@@ -160,11 +172,13 @@ export function WalletMenu() {
           <details className="wallet-advanced"><summary>Advanced</summary><Button icon={Check} variant="secondary" disabled={wallet.busy} onClick={() => void wallet.testCompatibility()}>Check signing compatibility</Button><p>Compatibility: {wallet.compatibility}</p><label>Receiving identity label<input value={label} onChange={e => setLabel(e.target.value)} /></label><Button icon={KeyRound} disabled={wallet.busy} onClick={() => void wallet.restoreIdentity(label)}>Restore receiving identity</Button>{wallet.identities.map(identity => <p className="wallet-address" key={identity.publicKey}>{identity.label}: {identity.publicKey}</p>)}</details>
         </section>
       </div> : <div className="wallet-popover-disconnected">
-        <p className="muted">Use your passkey on this device or another device, or unlock a saved password account.</p>
-        <Button icon={KeyRound} disabled={blocked || !passkeyAvailable} loading={busy} onClick={() => void connectPasskey("signin")}>Sign in with passkey</Button>{!passkeyAvailable && <p className="muted">Passkeys are unavailable in this browser. Use a saved password account or import your recovery backup.</p>}
-        <section className="wallet-popover-saved"><div className="section-heading"><h3>Your accounts</h3><span>{accounts.length + passkeyAccounts.length} saved</span></div><div className="actions"><Button icon={Plus} disabled={blocked} onClick={() => openAction(passkeyAvailable ? "passkey" : "create", null)}>Create Account</Button><Button icon={Upload} variant="secondary" disabled={blocked} onClick={() => openAction("import", null)}>Import</Button></div>
-          {loading ? <p role="status">Loading accounts...</p> : accounts.length + passkeyAccounts.length === 0 ? <p className="muted">No accounts saved in this browser yet.</p> : <div className="wallet-account-list">{accounts.map((value, index) => { const lastUsed = wallet.lastUsed?.kind === "password" && wallet.lastUsed.address.toLowerCase() === value.toLowerCase(); return <article className={`wallet-account${lastUsed ? " last-used" : ""}`} key={value}><div className="wallet-account-heading"><strong>Account {index + 1}</strong><span className="muted"> &middot; Password</span>{lastUsed && <span className="wallet-last-used">Last used</span>}</div><CopyableField label="Address" value={value} displayValue={short(value)} /><div className="actions"><Button icon={Trash2} variant="ghost" size="icon" title="Remove local wallet" aria-label={"Remove wallet " + short(value)} disabled={blocked} onClick={() => openAction("remove", value)} /><Button icon={LockKeyhole} disabled={blocked} onClick={() => openAction("unlock", value)}>{lastUsed ? "Unlock" : "Log in"}</Button></div></article>; })}{passkeyAccounts.map((account, index) => { const lastUsed = wallet.lastUsed?.kind === "passkey" && wallet.lastUsed.address.toLowerCase() === account.address.toLowerCase() && wallet.lastUsed.credentialId === account.credentialId; return <article className={`wallet-account${lastUsed ? " last-used" : ""}`} key={`passkey:${account.credentialId}`}><div className="wallet-account-heading"><strong>Account {accounts.length + index + 1}</strong><span className="muted"> &middot; Passkey</span>{lastUsed && <span className="wallet-last-used">Last used</span>}</div><CopyableField label="Address" value={account.address} displayValue={short(account.address)} /><div className="actions"><Button icon={KeyRound} disabled={blocked || !passkeyAvailable} aria-label={`${lastUsed ? "Unlock" : "Sign in to"} passkey account ${short(account.address)}`} onClick={() => void connectPasskey("signin", account)}>{lastUsed ? "Unlock" : "Sign in"}</Button></div></article>; })}</div>}
+        <p className="muted">Already have a PayUnlock passkey? Sign in here.</p>
+        <Button icon={KeyRound} disabled={blocked || !passkeyAvailable} loading={busy} onClick={() => void connectPasskey("signin")}>Sign in with passkey</Button>
+        {!passkeyAvailable && <p className="muted">Passkeys are unavailable in this browser. Use a saved password account or import your recovery backup.</p>}
+        <section className="wallet-popover-saved"><div className="section-heading"><h3>Your accounts</h3><span>{accounts.length + passkeyAccounts.length} saved</span></div>
+          {loading ? <p role="status">Loading accounts...</p> : accounts.length + passkeyAccounts.length === 0 ? <p className="muted">No accounts saved in this browser yet.</p> : <div className="wallet-account-list">{accounts.map((value, index) => { const lastUsed = wallet.lastUsed?.kind === "password" && wallet.lastUsed.address.toLowerCase() === value.toLowerCase(); return <article className={`wallet-account${lastUsed ? " last-used" : ""}`} key={value}><div className="wallet-account-heading"><AccountName name={accountNames[value.toLowerCase()] ?? `Account ${index + 1}`} disabled={blocked} onSave={name => setAccountNames(saveAccountName(value, name))} /><span className="muted"> &middot; Password</span>{lastUsed && <span className="wallet-last-used">Last used</span>}</div><CopyableField hideLabel label="Address" value={value} displayValue={short(value)} /><div className="actions"><Button icon={Trash2} variant="ghost" size="icon" title="Remove local wallet" aria-label={"Remove wallet " + short(value)} disabled={blocked} onClick={() => openAction("remove", value)} /><Button icon={LockKeyhole} disabled={blocked} onClick={() => openAction("unlock", value)}>{lastUsed ? "Unlock" : "Sign in"}</Button></div></article>; })}{passkeyAccounts.map((account, index) => { const lastUsed = wallet.lastUsed?.kind === "passkey" && wallet.lastUsed.address.toLowerCase() === account.address.toLowerCase() && wallet.lastUsed.credentialId === account.credentialId; return <article className={`wallet-account${lastUsed ? " last-used" : ""}`} key={`passkey:${account.credentialId}`}><div className="wallet-account-heading"><AccountName name={accountNames[account.address.toLowerCase()] ?? `Account ${accounts.length + index + 1}`} disabled={blocked} onSave={name => setAccountNames(saveAccountName(account.address, name))} /><span className="muted"> &middot; Passkey</span>{lastUsed && <span className="wallet-last-used">Last used</span>}</div><CopyableField hideLabel label="Address" value={account.address} displayValue={short(account.address)} /><div className="actions"><Button icon={KeyRound} disabled={blocked || !passkeyAvailable} aria-label={`${lastUsed ? "Unlock" : "Sign in to"} passkey account ${short(account.address)}`} onClick={() => void connectPasskey("signin", account)}>{lastUsed ? "Unlock" : "Sign in"}</Button></div></article>; })}</div>}
         </section>
+        <section className="wallet-popover-create"><div className="section-heading"><h2>Create Account</h2></div><div className="actions"><Button icon={Plus} disabled={blocked} onClick={() => openAction(passkeyAvailable ? "passkey" : "create", null)}>Create Account</Button><Button icon={Upload} variant="secondary" disabled={blocked} onClick={() => openAction("import", null)}>Import</Button></div></section>
         <section className="wallet-external-options"><h3>Or connect an existing wallet</h3>
         <div className="wallet-provider-buttons"><Button variant="secondary" disabled={blocked} onClick={() => void wallet.connectMetaMask()}><img src={metamaskLogo} alt="" aria-hidden="true" />Connect MetaMask</Button><Button variant="secondary" disabled={blocked || !reownProjectId} onClick={() => void wallet.connectWalletConnect()}><img src={walletConnectLogo} alt="" aria-hidden="true" />Connect WalletConnect</Button></div>
         {!reownProjectId && <p className="muted">WalletConnect is unavailable in this environment.</p>}
@@ -174,7 +188,7 @@ export function WalletMenu() {
     {createPortal(
     <dialog ref={dialog} className="approval-dialog wallet-action-dialog" aria-labelledby="wallet-action-title" onCancel={event => { event.preventDefault(); if (!blocked) closeDialog(); }}>
       {mode && <><div className="section-heading"><h2 id="wallet-action-title">{titles[mode]}</h2><Button icon={X} variant="ghost" size="icon" aria-label="Close wallet dialog" title="Close" disabled={blocked} onClick={closeDialog} /></div>{target && <p className="wallet-address">{target}</p>}
-      <p className="muted">{mode === "passkey" ? "Create a new account using a passkey. To recover an existing account, cancel and choose Sign in with passkey. Save the passkey with a provider you can access on your other devices." : passkeyExport ? "Verify your passkey to export a recovery phrase and private key. Either can restore this same account using Import on a device without passkey support." : mode === "create" ? "Choose a password for your account on this browser. Keep a recovery backup to access it on another device." : mode === "import" ? "Restore an existing account using its recovery phrase or private key, then choose a password for this browser." : mode === "unlock" ? "Enter your password to log in to this account." : mode === "password" ? "Change the password used on this browser. Your account and recovery backup stay the same." : mode === "export" ? "Your recovery material restores this wallet on another device. Keep it private." : "Remove this wallet from this browser."}</p>
+      <p className="muted">{mode === "passkey" ? "Create a new account using a passkey. To recover an existing account, cancel and choose Sign in with passkey. Save the passkey with a provider you can access on your other devices." : passkeyExport ? "Verify your passkey to export a recovery phrase and private key. Either can restore this same account using Import on a device without passkey support." : mode === "create" ? "Choose a password for your account on this browser. Keep a recovery backup to access it on another device." : mode === "import" ? "Restore an existing account using its recovery phrase or private key, then choose a password for this browser." : mode === "unlock" ? "Enter your password to sign in to this account." : mode === "password" ? "Change the password used on this browser. Your account and recovery backup stay the same." : mode === "export" ? "Your recovery material restores this wallet on another device. Keep it private." : "Remove this wallet from this browser."}</p>
       {mode === "export" && !backup && <RecoveryWarning />}
       {mode === "passkey" && <div className="dialog-actions"><Button icon={KeyRound} loading={busy} disabled={blocked} onClick={() => void connectPasskey("create")}>Create passkey</Button><Button variant="secondary" disabled={blocked} onClick={() => openAction("create", null)}>Use password instead</Button></div>}
       {!backup && mode !== "passkey" && <form onSubmit={event => void submit(event)}><fieldset disabled={blocked}>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, HandCoins, RefreshCw, ShoppingBag } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, RefreshCw, ShoppingBag } from "lucide-react";
 import { formatUnits, hexlify } from "ethers";
 import { decodeBase64 } from "@zkbytes/sdk";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { TopUpDialog } from "@/wallet/TopUpDialog";
 import { tokenPresentation } from "@/config/token-icons";
 import { useCommerce, useCommerceAccess, type Asset, type Configuration, type Deployment, type Product } from "./client";
 import { OfferReview } from "./OfferReview";
+import { PaymentBalance } from "./PaymentBalance";
 import { newReceivingContext, restoreReceiving } from "./protocol";
 import type { Operation } from "./purchase-journal";
 import { Feedback, journal, native, prepareOperation, randomId, TransactionPanel, useTask } from "./ui";
@@ -85,7 +86,8 @@ export function BuyerCheckout({ product, preview, resumeId, onCompletionChange }
   const [transactionReviewOpen, setTransactionReviewOpen] = useState(false);
   const [paySelf, setPaySelf] = useState(false);
   const config = record?.configuration ?? preview?.configuration;
-  const sponsored = config?.authorizationMode === "eip3009-receive" && config.terms.token !== native && !paySelf && !record?.action;
+  const canCoverFees = config?.authorizationMode === "eip3009-receive" && config.terms.token !== native;
+  const sponsored = canCoverFees && !paySelf && !record?.action;
   const done = record?.progress === "finalized";
   useEffect(() => { onCompletionChange?.(done); }, [done, onCompletionChange]);
   const pending = record?.progress === "checking";
@@ -97,7 +99,7 @@ export function BuyerCheckout({ product, preview, resumeId, onCompletionChange }
     if (resumeId && !latest) throw new Error("This saved checkout is no longer available. Go back to the offer to start a new purchase.");
     // A completed order is history, not the next checkout for this offer.
     const saved = latest?.progress === "finalized" && !resumeId ? undefined : latest;
-    if (live) { setRecord(saved); setLoaded(true); }
+    if (live) { setRecord(saved); setPaySelf(current => saved ? saved.payNetworkFeeSelf ?? !!saved.action : current); setLoaded(true); }
   }).catch(cause => { if (live) task.setError(cause.message); }); return () => { live = false; }; }, [product.id, resumeId, wallet.sessionEpoch, access.authenticated, restoreAttempt]);
   useEffect(() => { let live = true; setAsset(undefined); setBalanceError(""); if (access.address && config && !done) void api.read<Asset>(`/public/wallets/${access.address}/assets/${config.terms.token}`).then(value => { if (live) setAsset(value); }).catch(() => { if (live) setBalanceError("Could not load balances. Refresh to try again."); }); return () => { live = false; }; }, [access.address, config?.terms.token, record?.progress, done]);
   async function loadAsset(configuration: Configuration) { if (!access.address) throw new Error("Choose a wallet to check its balance."); const value = await api.read<Asset>(`/public/wallets/${access.address}/assets/${configuration.terms.token}`); setAsset(value); setBalanceError(""); return value; }
@@ -131,7 +133,7 @@ export function BuyerCheckout({ product, preview, resumeId, onCompletionChange }
     if (!configuration.allowed || configuration.status !== 1) throw new Error("This offer is not currently available.");
     if (BigInt(balances.balance) < BigInt(configuration.terms.price)) throw new Error("Top up your payment balance to continue.");
     const approval = configuration.terms.token !== native && BigInt(balances.allowance) < BigInt(configuration.terms.price);
-    setRecord(await prepareOperation(api, next, { kind: approval ? "approve" : "purchase", requestId: next.requestId!, expectedTerms: configuration.expectedTerms }));
+    setRecord(await prepareOperation(api, next, { kind: approval ? "approve" : "purchase", requestId: next.requestId!, expectedTerms: configuration.expectedTerms }, paySelf));
     setTransactionReviewOpen(true);
   }
   async function submitSponsored() {
@@ -165,7 +167,7 @@ export function BuyerCheckout({ product, preview, resumeId, onCompletionChange }
     if (!next) {
       const deployment = await api.read<{ chainId: 10143; contract: string }>("/deployment");
       const context = newReceivingContext({ chainId: deployment.chainId, contract: deployment.contract }, wallet.session!.address), requestId = randomId();
-      next = await journal.save({ id: requestId, account: wallet.session!.address.toLowerCase(), deployment: context.deployment, requestId, context, productId: product.id, hashes: [], progress: "draft", version: 0 }); setRecord(next);
+      next = await journal.save({ id: requestId, account: wallet.session!.address.toLowerCase(), deployment: context.deployment, requestId, context, productId: product.id, hashes: [], progress: "draft", version: 0, payNetworkFeeSelf: paySelf }); setRecord(next);
     }
     if (!next.configuration) {
       if (!next.receiving) {
@@ -176,23 +178,25 @@ export function BuyerCheckout({ product, preview, resumeId, onCompletionChange }
       next = await journal.save({ ...next, configuration: response.configuration }); setRecord(next);
       if (response.configuration.expectedTerms !== config.expectedTerms) { setNotice("The offer terms changed. Review the updated details before continuing."); await loadAsset(response.configuration); return; }
     }
-    if (next.configuration?.authorizationMode === "eip3009-receive") return;
+    if (next.configuration?.authorizationMode === "eip3009-receive" && !paySelf) return;
     await prepare(next, next.configuration!, currentBalance);
   }
   async function backToPayment() {
     if (!record || pending || done) return;
     setRecord(await journal.save({ ...record, transaction: undefined, action: undefined, activeHash: undefined, progress: "draft" }));
   }
-  async function switchToDirect() {
+  async function changeFeeMode(selfPay: boolean) {
+    if (!canCoverFees || pending || done || transactionBusy) return;
     if (record?.requestId) {
       const recovered = await api.request<{ status: string; orderId?: string; order?: { buyer: string; requestId: string; buyerReceiving: { nonce: string; publicKey: string } } }>(`/orders/recover/${record.requestId}`);
       if (recovered.status === "finalized") {
         if (!recovered.order || !purchaseMatches(record, recovered.order)) throw new Error("The purchase reference belongs to another receiving key.");
         setRecord(await journal.save({ ...record, progress: "finalized", orderId: recovered.orderId })); return;
       }
-      setRecord(await journal.save({ ...record, progress: "draft", relayJobId: undefined }));
+      setRecord(await journal.save({ ...record, progress: "draft", payNetworkFeeSelf: selfPay, action: undefined, transaction: undefined, activeHash: undefined, relayJobId: undefined, relayNonce: undefined, relayExpiresAt: undefined, relayFailureReason: undefined }));
     }
-    setPaySelf(true);
+    setTransactionReviewOpen(false);
+    setPaySelf(selfPay);
   }
   const enough = asset && config && BigInt(asset.balance) >= BigInt(config.terms.price);
   const step = done ? 2 : 1;
@@ -201,22 +205,24 @@ export function BuyerCheckout({ product, preview, resumeId, onCompletionChange }
   const selfOffer = access.authenticated && !!wallet.session && config?.seller.toLowerCase() === wallet.session.address.toLowerCase();
   const lowBalance = access.authenticated && !!asset && !enough;
   const paymentAction = !access.authenticated ? wallet.session && !wallet.session.locked ? "Verify wallet to continue" : "Sign in to continue" : sponsored ? sponsoredReady ? record?.progress === "reverted" ? "Try authorization again" : "Authorize token payment" : "Sign receiving key" : record?.receiving ? needsApproval ? "Review token approval" : "Review payment" : "Sign receiving key and review";
+  const feeSwitch = canCoverFees && <label className="buyer-fee-switch"><input type="checkbox" role="switch" checked={!sponsored} disabled={task.busy || access.busy || transactionBusy || pending || done} onChange={event => { const selfPay = event.currentTarget.checked; void task.run(() => changeFeeMode(selfPay)); }} /><span>Pay network fee myself</span></label>;
   return <><ol className="offer-flow-steps buyer-steps" aria-label="Purchase steps">{["Offer", "Payment", "Result"].map((label, index) => <li key={label} aria-current={step === index ? "step" : undefined}><span>{index < step ? <Check size={16} aria-label="Completed" /> : index + 1}</span>{label}</li>)}</ol>
     {access.authenticated && !loaded ? <><p role="status">Restoring checkout...</p>{task.error && <Button icon={RefreshCw} onClick={() => setRestoreAttempt(value => value + 1)}>Retry checkout</Button>}</> : done ? <PurchaseResult record={record} productTitle={product.title} onBuyAgain={() => { setRecord(undefined); setNotice(""); navigate(location.pathname, { replace: true, state: { checkout: true } }); }} /> : !config ? <p role="status">Checking current offer terms...</p> : <section className="card buyer-checkout">
       <h2>{pending ? record.action?.kind === "approve" ? "Checking token approval" : "Checking payment" : "Payment"}</h2>
       <OfferReview product={summary(product, config)} compact publicPreview assetDetails={asset ?? (preview?.configuration.terms.token === config.terms.token ? preview.asset : undefined)} />
-      {!pending && <details className="buyer-balances" open={!payment}><summary>Balances and top up</summary>{access.address && <p className="muted">Balance for {access.address.slice(0, 8)}...{access.address.slice(-6)}</p>}{asset ? <><p>Available: <strong>{formatUnits(asset.balance, asset.decimals)} {asset.symbol}</strong></p><p>Network fees: <strong>{sponsored ? "Paid by a relayer; no MON needed" : `${formatUnits(asset.nativeBalance, 18)} MON available`}</strong></p><div className="actions">{[{ token: config.terms.token, symbol: asset.symbol }, ...(!sponsored && config.terms.token !== native ? [{ token: native, symbol: "MON" }] : [])].filter(item => tokenPresentation(config.chainId, item.token).topUpProviders?.length).map(item => <Button key={item.token} icon={HandCoins} variant="secondary" disabled={task.busy} onClick={() => setTopUp(item)}>Top up {item.symbol}</Button>)}<Button icon={RefreshCw} variant="ghost" disabled={task.busy} onClick={() => void task.run(() => loadAsset(config))}>Refresh balance</Button></div></> : access.address ? <><p role={balanceError ? "alert" : "status"}>{balanceError || "Loading balances..."}</p><Button icon={RefreshCw} variant="secondary" disabled={task.busy} onClick={() => void task.run(() => loadAsset(config))}>Refresh balance</Button></> : <p className="muted">Choose a wallet at payment to see its balance.</p>}</details>}
+      {!pending && <PaymentBalance address={access.address} asset={asset} configuration={config} selfPay={!sponsored} open={!payment} busy={task.busy} error={balanceError} onRefresh={() => void task.run(() => loadAsset(config))} onTopUp={setTopUp} />}
       {notice && <p role="status">{notice}</p>}
       <ol className="payment-signing-steps" aria-label="Payment steps"><li><span>1</span>Wallet access{access.authenticated && <Check size={16} aria-label="Completed" />}</li><li><span>2</span>Sign receiving key{record?.receiving && <Check size={16} aria-label="Completed" />}</li>{sponsored ? <li><span>3</span>Authorize exact token payment{pending && <Check size={16} aria-label="Completed" />}</li> : <>{config.terms.token !== native && <li><span>3</span>Approve token{!needsApproval && <Check size={16} aria-label="Completed" />}</li>}<li><span>{config.terms.token === native ? 3 : 4}</span>Confirm payment</li></>}</ol>
       {sponsored && record?.progress === "reverted" && <div className="buyer-payment-warning" role="alert"><p>{relayFailureMessages[record.relayFailureReason ?? ""] ?? "The relayer could not submit this payment. Try again or pay the network fee yourself."} No payment was made.</p></div>}
-      {!payment ? <>{!sponsored && <p className="muted">External wallets ask you to confirm sign-in and receiving-key messages separately. No payment is sent until you confirm the transaction.</p>}{(selfOffer || lowBalance) && <div className="buyer-payment-warning" role="alert">{selfOffer && <p>You cannot buy your own offer.</p>}{lowBalance && <p>Your {asset?.symbol} balance is too low for this purchase. Top up before continuing.</p>}</div>}<div className="offer-review-actions">{record?.configuration && <Button icon={RefreshCw} variant="secondary" disabled={task.busy} onClick={() => void task.run(refreshTerms)}>Refresh terms</Button>}<Button icon={ArrowRight} disabled={task.busy || access.busy || !config.allowed || config.status !== 1 || (selfOffer || lowBalance)} onClick={() => access.authenticated ? void task.run(sponsoredReady ? submitSponsored : continueCheckout) : access.authorize()}>{paymentAction}</Button>{sponsored && <Button variant="secondary" disabled={task.busy} onClick={() => void task.run(switchToDirect)}>Pay network fee myself</Button>}</div>{access.error && <p role="alert">{access.error}</p>}</> : sponsored ? <><p role="status">{record.relayJobId ? "Waiting for the relayer and finalized payment." : "Payment submission is uncertain. Check the order before authorizing again."}</p><div className="actions"><Button icon={RefreshCw} variant="secondary" disabled={task.busy} onClick={() => void task.run(checkSponsored)}>Check payment status</Button>{!record.relayJobId && <Button disabled={task.busy} onClick={() => void task.run(submitSponsored)}>Retry authorization</Button>}<Button variant="ghost" disabled={task.busy} onClick={() => void task.run(switchToDirect)}>Pay network fee myself</Button></div>{record.activeHash && <p className="address">Transaction: {record.activeHash}</p>}</> : <>
+      {!pending && <p className="buyer-fee-status" role="status">{sponsored ? "Network fee covered." : "You pay network fees in MON."}</p>}
+      {!payment ? <>{!sponsored && <p className="muted">External wallets ask you to confirm sign-in and receiving-key messages separately.</p>}{(selfOffer || lowBalance) && <div className="buyer-payment-warning" role="alert">{selfOffer && <p>You cannot buy your own offer.</p>}{lowBalance && <p>Your {asset?.symbol} balance is too low for this purchase. Top up before continuing.</p>}</div>}<div className="offer-review-actions">{record?.configuration && <Button icon={RefreshCw} variant="secondary" disabled={task.busy} onClick={() => void task.run(refreshTerms)}>Refresh terms</Button>}<div className="buyer-payment-actions">{feeSwitch}<Button icon={ArrowRight} disabled={task.busy || access.busy || !config.allowed || config.status !== 1 || (selfOffer || lowBalance)} onClick={() => access.authenticated ? void task.run(sponsoredReady ? submitSponsored : continueCheckout) : access.authorize()}>{paymentAction}</Button></div></div>{access.error && <p role="alert">{access.error}</p>}</> : sponsored ? <><p role="status">{record.relayJobId ? "Waiting for the relayer and finalized payment." : "Payment submission is uncertain. Check the order before authorizing again."}</p><div className="actions">{feeSwitch}<Button icon={RefreshCw} variant="secondary" disabled={task.busy} onClick={() => void task.run(checkSponsored)}>Check payment status</Button>{!record.relayJobId && <Button disabled={task.busy} onClick={() => void task.run(submitSponsored)}>Retry authorization</Button>}</div>{record.activeHash && <p className="address">Transaction: {record.activeHash}</p>}</> : <>
         <p>{record.action?.kind === "approve" ? record.progress === "draft" ? "Token approval confirmed. Continue to review your payment." : "First, allow payment of exactly this price. Approval alone does not place an order." : pending ? "Your payment is being checked. You can return later; this purchase will resume here." : "Confirm your payment to place the order. Network fees are paid in MON."}</p>
-         {record.progress !== "draft" && <Button icon={ArrowRight} onClick={() => setTransactionReviewOpen(true)}>{pending ? "Check transaction status" : record.action?.kind === "approve" ? "Review token approval" : "Review payment"}</Button>}
-        {record.progress === "draft" && <Button icon={ArrowRight} disabled={task.busy || !asset} onClick={() => void task.run(async () => prepare(record, config, await loadAsset(config)))}>Continue to payment</Button>}
+        <div className="buyer-payment-actions">{feeSwitch}{record.progress !== "draft" && <Button icon={ArrowRight} onClick={() => setTransactionReviewOpen(true)}>{pending ? "Check transaction status" : record.action?.kind === "approve" ? "Review token approval" : "Review payment"}</Button>}
+        {record.progress === "draft" && <Button icon={ArrowRight} disabled={task.busy || !asset} onClick={() => void task.run(async () => prepare(record, config, await loadAsset(config)))}>Continue to payment</Button>}</div>
         {!pending && <Button icon={ArrowLeft} variant="secondary" disabled={task.busy || transactionBusy} onClick={() => void task.run(backToPayment)}>Back to payment</Button>}
       </>}
     </section>}
-    {transactionReviewOpen && payment && !sponsored && record && record.progress !== "draft" && <OrderDialog title={record.action?.kind === "approve" ? "Token approval" : "Payment"} onClose={() => { if (!transactionBusy) setTransactionReviewOpen(false); }}><TransactionPanel key={record.id} record={record} onChange={next => { setRecord(next); if (next.progress === "draft" || next.progress === "finalized") setTransactionReviewOpen(false); }} buyerView compactReview onBusyChange={setTransactionBusy} />{record.progress === "reverted" && <Button icon={ArrowLeft} variant="secondary" disabled={task.busy} onClick={() => void task.run(async () => { await backToPayment(); setTransactionReviewOpen(false); })}>Back to payment</Button>}<Feedback {...task} /></OrderDialog>}
+    {transactionReviewOpen && payment && !sponsored && record && record.progress !== "draft" && <OrderDialog title={record.action?.kind === "approve" ? "Token approval" : "Payment"} onClose={() => { if (!transactionBusy) setTransactionReviewOpen(false); }}><TransactionPanel key={record.id} record={record} onChange={next => { setRecord(next); if (next.progress === "draft" || next.progress === "finalized") setTransactionReviewOpen(false); }} buyerView compactReview onBusyChange={setTransactionBusy} onRetry={async () => { await backToPayment(); setTransactionReviewOpen(false); }} retryLabel="Back to payment" /><Feedback {...task} /></OrderDialog>}
     <Feedback {...task} />
     {topUp && config && access.address && <TopUpDialog symbol={topUp.symbol} address={access.address} chainId={config.chainId} providers={tokenPresentation(config.chainId, topUp.token).topUpProviders ?? []} onClose={() => setTopUp(undefined)} />}
   </>;

@@ -12,6 +12,40 @@ const account = `0x${"11".repeat(20)}`, contract = `0x${"22".repeat(20)}`, token
 function order(orderId = "40", state = 1): PublicOrder { return { orderId, canceled: false, block: { number: 1, hash: "0x", timestamp: 100 }, order: { state, buyer: account, seller: contract, terms: { token, price: "1000000", hasEventEnd: false, eventEnd: "0", reviewWindow: "86400", responseWindow: "259200", commitmentWindow: "600" }, publicationDeadline: "200", reviewDeadline: "200", responseDeadline: "200" }, offer: { id: "offer", title: "Test offer", description: "Content" } }; }
 function operation(id: string, progress: Operation["progress"], orderId?: string): Operation { return { id, requestId: id, account, deployment: { chainId: 10143, contract }, productId: "offer", progress, orderId, hashes: [], version: 1 }; }
 function open() { render(<MemoryRouter><Purchases /></MemoryRouter>); }
+it("keeps purchases and token amounts visible while refreshing, including on failure", async () => {
+  open();
+  expect(await screen.findByText("1 USDC")).toBeInTheDocument();
+  const card = screen.getByRole("link", { name: "Open order #40" }).closest("article");
+  let fail!: (error: Error) => void;
+  mocks.read.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+  const refresh = screen.getByRole("button", { name: "Refresh" });
+  fireEvent.click(refresh);
+  expect(refresh).toHaveAttribute("aria-busy", "true");
+  expect(refresh.querySelector("svg.spin")).toBeInTheDocument();
+  expect(refresh).toBeDisabled();
+  expect(screen.queryByText("Working...")).not.toBeInTheDocument();
+  expect(screen.queryByText("Loading amount...")).not.toBeInTheDocument();
+  expect(screen.getByText("1 USDC")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Open order #40" }).closest("article")).toBe(card);
+  fail(new Error("Refresh unavailable"));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Refresh unavailable");
+  await waitFor(() => expect(refresh).toBeEnabled());
+  expect(refresh.querySelector("svg.spin")).not.toBeInTheDocument();
+  expect(screen.getByText("1 USDC")).toBeInTheDocument();
+});
+it("keeps the empty purchases state visible during refresh", async () => {
+  mocks.read.mockImplementation(async (path: string) => path === "/deployment" ? { chainId: 10143, contract } : { items: [], nextCursor: null });
+  open();
+  const empty = await screen.findByRole("heading", { name: "No purchases yet" });
+  let finish!: (value: unknown) => void;
+  mocks.read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const refresh = screen.getByRole("button", { name: "Refresh" });
+  fireEvent.click(refresh);
+  expect(empty).toBeInTheDocument();
+  expect(screen.queryByText("Working...")).not.toBeInTheDocument();
+  finish({ items: [], nextCursor: null });
+  await waitFor(() => expect(refresh).toBeEnabled());
+});
 beforeEach(() => {
   vi.clearAllMocks(); mocks.list.mockResolvedValue([]); mocks.remove.mockResolvedValue(undefined);
   mocks.read.mockImplementation(async (path: string) => path === "/deployment" ? { chainId: 10143, contract } : path.startsWith("/public/assets/") ? { symbol: "USDC", decimals: 6 } : { items: [order()], nextCursor: null, indexing: { status: "available" } });

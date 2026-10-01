@@ -1,10 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ supported: true, open: vi.fn(), create: vi.fn(), connect: vi.fn(), session: null as null | { kind: string; address: string; chainId: string; passkey: { credentialId: string; rpId: string } }, backup: vi.fn() }));
+const mocks = vi.hoisted(() => ({ supported: true, accounts: [] as string[], open: vi.fn(), create: vi.fn(), connect: vi.fn(), session: null as null | { kind: string; address: string; chainId: string; passkey: { credentialId: string; rpId: string } }, backup: vi.fn() }));
 vi.mock("@/wallet/passkey", () => ({ canUsePasskeys: () => mocks.supported, openPasskeySession: mocks.open, exportPasskeySecret: mocks.backup, passkeyError: () => "Passkey not completed. Use password instead or retry." }));
 vi.mock("@/wallet/vault", () => ({ VAULT_EVENT: "test-vault", VAULT_CHANGE_KEY: "test-change", WalletVault: class {
-  selected = async () => null; list = async () => []; create = mocks.create;
+  selected = async () => null; list = async () => mocks.accounts; create = mocks.create;
 } }));
 vi.mock("@/wallet/ApprovalProvider", () => ({ useApproval: () => async () => true }));
 vi.mock("@/wallet/WalletBalances", () => ({ WalletBalances: () => null }));
@@ -13,7 +13,7 @@ vi.mock("@/wallet/session-store", () => ({ useSession: () => ({ session: mocks.s
 import { WalletMenu } from "@/wallet/WalletPage";
 import { PASSKEY_ACCOUNTS_KEY, rememberPasskeyAccount } from "@/wallet/saved-passkeys";
 beforeEach(() => {
-  vi.clearAllMocks(); localStorage.clear(); mocks.supported = true; mocks.session = null;
+  vi.clearAllMocks(); localStorage.clear(); mocks.supported = true; mocks.session = null; mocks.accounts = [];
   // jsdom's UA stylesheet hides [popover] even with the shared API shim.
   HTMLElement.prototype.showPopover = function () { this.hidden = false; this.style.display = "block"; this.dispatchEvent(Object.assign(new Event("toggle"), { newState: "open" })); };
   HTMLElement.prototype.hidePopover = function () { this.hidden = true; this.style.display = "none"; this.dispatchEvent(Object.assign(new Event("toggle"), { newState: "closed" })); };
@@ -38,6 +38,27 @@ async function showMenu() {
   await waitFor(() => expect(screen.queryByText("Loading accounts...")).not.toBeInTheDocument());
   fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 }
+
+it("renames password and passkey accounts and restores their names after remount", async () => {
+  mocks.accounts = [`0x${"22".repeat(20)}`];
+  rememberPasskeyAccount({ address: `0x${"11".repeat(20)}`, credentialId: "dGVzdA", rpId: window.location.hostname });
+  await showMenu();
+  fireEvent.click(screen.getByRole("button", { name: "Rename Account 1" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Account name" }), { target: { value: "Personal" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rename Account 2" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Account name" }), { target: { value: "Passkey wallet" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  cleanup();
+  await showMenu();
+  expect(screen.getByText("Personal")).toBeInTheDocument();
+  expect(screen.getByText("Passkey wallet")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Rename Personal" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Account name" }), { target: { value: "Discard this" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.getByText("Personal")).toBeInTheDocument();
+  expect(screen.queryByText("Discard this")).not.toBeInTheDocument();
+});
 
 it("prefers passkey creation, does not silently fall back on cancellation, and offers explicit password creation", async () => {
   mocks.open.mockRejectedValueOnce(new Error("cancelled"));

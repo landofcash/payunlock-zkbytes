@@ -22,10 +22,13 @@ async function main() {
   const escrow = new Contract(deployment.escrow, escrowInterface, provider);
   const lockClient = await pool.connect();
   const lockName = `payunlock-relayer:${config.CHAIN_ID}:${deployment.router.toLowerCase()}`;
-  const lock = (await lockClient.query<{ acquired: boolean }>("SELECT pg_try_advisory_lock(hashtext($1)::bigint) AS acquired", [lockName])).rows[0];
-  if (!lock?.acquired) {
-    console.info("Another relayer worker owns this funded account queue.");
-    lockClient.release(); await pool.end(); provider.destroy(); return;
+  let waitingForLock = false;
+  while (true) {
+    const lock = (await lockClient.query<{ acquired: boolean }>("SELECT pg_try_advisory_lock(hashtext($1)::bigint) AS acquired", [lockName])).rows[0];
+    if (lock?.acquired) break;
+    if (!waitingForLock) console.info("Waiting for the previous relayer worker to release this funded account queue.");
+    waitingForLock = true;
+    await new Promise(resolve => setTimeout(resolve, 5000));
   }
   let closing = false;
   async function stop() {

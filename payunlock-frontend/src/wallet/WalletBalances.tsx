@@ -49,7 +49,7 @@ export function WalletBalances({ address }: { address: string }) {
     return () => { generation.current++; clearInterval(timer); };
   }, [address]);
   return <div className="wallet-balance-section" aria-label="Token balances">
-    <div className="wallet-balance-heading"><span className="eyebrow">BALANCES</span><Button icon={RefreshCw} variant="ghost" size="icon" title="Refresh balance" aria-label="Refresh balance" disabled={busy} onClick={() => void refresh()} /></div>
+    <div className="wallet-balance-heading"><span className="eyebrow">BALANCES</span><Button icon={RefreshCw} iconSpinning={busy} variant="ghost" size="icon" title="Refresh balance" aria-label="Refresh balance" disabled={busy} onClick={() => void refresh()} /></div>
     {!data && <p role="status">{busy ? "Loading balances…" : "Balances unavailable"}</p>}
     {data?.items.map(asset => {
       const providers = tokenPresentation(data.chainId, asset.address).topUpProviders;

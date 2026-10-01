@@ -172,11 +172,84 @@ it("treats token approval as a separate step before payment, never as order succ
 });
 it("refreshing balances preserves the reviewed transaction", async () => {
   mocks.list.mockResolvedValue([{ ...operation("review"), action: { kind: "purchase", requestId: hash, expectedTerms: hash } }]); checkout();
-  fireEvent.click(await screen.findByText("Balances and top up"));
+  fireEvent.click(await screen.findByText("Your balance"));
   const refresh = await screen.findByRole("button", { name: "Refresh balance" }); fireEvent.click(refresh);
   await waitFor(() => expect(mocks.read.mock.calls.filter(([path]) => path.startsWith("/public/wallets/")).length).toBeGreaterThan(1));
   fireEvent.click(screen.getByRole("button", { name: "Review payment" }));
   expect(screen.getByRole("dialog", { name: "Payment" })).toHaveTextContent("Confirm payment");
   expect(screen.getByRole("button", { name: "Confirm payment" })).toBeInTheDocument();
   expect(mocks.save).not.toHaveBeenCalled();
+});
+
+function coveredCheckout() {
+  configuration.authorizationMode = "eip3009-receive";
+  configuration.terms.token = contract; configuration.terms.price = "1000000";
+  balances = { ...balances, token: contract, symbol: "USDC", decimals: 6, balance: "10000000", allowance: "0" };
+  mocks.request.mockImplementation(async (path: string) => path.startsWith("/orders/recover/") ? { status: "uncertain" } : { configuration });
+}
+
+it("switches fee modes both ways without changing checkout identity or receiving keys", async () => {
+  coveredCheckout();
+  const saved = operation(); mocks.list.mockResolvedValue([saved]); checkout();
+  const toggle = await screen.findByRole("switch", { name: "Pay network fee myself" });
+  expect(toggle).not.toBeChecked();
+  expect(screen.getByText("Network fee covered.")).toBeInTheDocument();
+  fireEvent.click(toggle);
+  await screen.findByRole("button", { name: "Review token approval" });
+  expect(toggle).toBeChecked();
+  expect(screen.getByRole("group", { name: "MON balance" })).toBeInTheDocument();
+  expect(screen.getByText("You pay network fees in MON.")).toBeInTheDocument();
+  fireEvent.click(toggle);
+  await screen.findByRole("button", { name: "Authorize token payment" });
+  expect(toggle).not.toBeChecked();
+  expect(screen.queryByRole("group", { name: "MON balance" })).not.toBeInTheDocument();
+  const next = mocks.save.mock.calls.at(-1)![0];
+  expect(next).toMatchObject({ id: saved.id, requestId: saved.requestId, receiving: saved.receiving, payNetworkFeeSelf: false });
+  expect(mocks.receiving).not.toHaveBeenCalled();
+});
+
+it("opens approval after selecting self-paid fees, then clears the prepared transaction when switching back", async () => {
+  coveredCheckout(); const saved = operation(); mocks.list.mockResolvedValue([saved]); checkout();
+  fireEvent.click(await screen.findByRole("switch", { name: "Pay network fee myself" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Review token approval" }));
+  expect(await screen.findByRole("button", { name: "Approve token payment" })).toBeInTheDocument();
+  expect(mocks.prepare).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ requestId: saved.requestId, receiving: saved.receiving }), expect.objectContaining({ kind: "approve" }), true);
+  fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+  fireEvent.click(screen.getByRole("switch", { name: "Pay network fee myself" }));
+  await screen.findByRole("button", { name: "Authorize token payment" });
+  expect(mocks.save.mock.calls.at(-1)![0]).toMatchObject({ action: undefined, transaction: undefined, activeHash: undefined, progress: "draft" });
+});
+
+it("restores the saved self-payment choice on reopening a checkout", async () => {
+  coveredCheckout(); mocks.list.mockResolvedValue([{ ...operation(), payNetworkFeeSelf: true }]); checkout();
+  expect(await screen.findByRole("button", { name: "Review token approval" })).toBeInTheDocument();
+  expect(screen.getByRole("switch", { name: "Pay network fee myself" })).toBeChecked();
+});
+
+it("keeps a fee choice made before signing in when starting a new checkout", async () => {
+  coveredCheckout(); mocks.access.authenticated = false; mocks.session = null;
+  const view = render(<MemoryRouter><BuyerCheckout product={product} preview={preview()} /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole("switch", { name: "Pay network fee myself" }));
+  await waitFor(() => expect(screen.getByRole("switch", { name: "Pay network fee myself" })).toBeChecked());
+  mocks.access.authenticated = true; mocks.session = { address: account };
+  view.rerender(<MemoryRouter><BuyerCheckout product={product} preview={preview()} /></MemoryRouter>);
+  await screen.findByRole("button", { name: "Sign receiving key and review" });
+  expect(screen.getByRole("switch", { name: "Pay network fee myself" })).toBeChecked();
+});
+
+it("disables fee changes during an unresolved direct token approval", async () => {
+  coveredCheckout(); mocks.list.mockResolvedValue([{ ...operation("checking"), payNetworkFeeSelf: true, action: { kind: "approve", requestId: hash, expectedTerms: hash } }]); checkout();
+  const toggle = await screen.findByRole("switch", { name: "Pay network fee myself" });
+  expect(toggle).toBeChecked(); expect(toggle).toBeDisabled();
+  fireEvent.click(toggle);
+  expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it.each([undefined, "relay-job"])("disables fee changes while submitted payment is unresolved (%s)", async relayJobId => {
+  coveredCheckout(); mocks.list.mockResolvedValue([{ ...operation("checking"), relayJobId }]); checkout();
+  const toggle = await screen.findByRole("switch", { name: "Pay network fee myself" });
+  expect(toggle).toBeDisabled();
+  fireEvent.click(toggle);
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.prepare).not.toHaveBeenCalled();
 });

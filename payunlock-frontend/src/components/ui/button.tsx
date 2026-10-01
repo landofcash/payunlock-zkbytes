@@ -13,12 +13,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, Va
   asChild?: boolean;
   icon?: LucideIcon;
   loading?: boolean;
+  iconSpinning?: boolean;
 }
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(({ className, variant, size, asChild = false, icon: Icon, loading, children, disabled, type = "button", ...props }, ref) => {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(({ className, variant, size, asChild = false, icon: Icon, loading, iconSpinning, children, disabled, type = "button", ...props }, ref) => {
   const Comp = asChild ? Slot : "button";
   // asChild callers put their icon inside the link so Slot has exactly one child.
-  return <Comp ref={ref} type={asChild ? undefined : type} className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || loading} aria-busy={loading || undefined} {...props}>
-    {asChild ? children : <>{loading ? <LoaderCircle className="button-icon spin" aria-hidden="true" /> : Icon && <Icon className="button-icon" aria-hidden="true" />}{children}</>}
+  return <Comp ref={ref} type={asChild ? undefined : type} className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || loading || iconSpinning} aria-busy={loading || iconSpinning || undefined} {...props}>
+    {asChild ? children : <>{loading ? <LoaderCircle className="button-icon spin" aria-hidden="true" /> : Icon && <Icon className={cn("button-icon", iconSpinning && "spin")} aria-hidden="true" />}{children}</>}
   </Comp>;
 });
 Button.displayName = "Button";

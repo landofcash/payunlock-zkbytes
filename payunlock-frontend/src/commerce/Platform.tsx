@@ -1,4 +1,4 @@
-import { Check as CheckIcon, KeyRound, RefreshCw, X } from "lucide-react";
+import { Check as CheckIcon, KeyRound, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { formatEther, formatUnits, id, isAddress, parseEther, parseUnits, ZeroAddress } from "ethers";
@@ -52,6 +52,7 @@ function changeSummary(action: Action, settings?: PlatformSettings, feeToken?: T
 
 export function Platform() {
   const api = useCommerce(), wallet = useSession(), task = useTask();
+  const [refreshing, setRefreshing] = useState(false);
   const [platform, setPlatform] = useState<PlatformSettings>(), [deployment, setDeployment] = useState<Deployment>();
   const [feeToken, setFeeToken] = useState<TokenMetadata>(), [claimToken, setClaimToken] = useState<TokenMetadata>();
   const [durationInput, setDurationInput] = useState(""), [response, setResponse] = useState(""), [floor, setFloor] = useState(""), [minimum, setMinimum] = useState(""), [maximum, setMaximum] = useState(""), [batch, setBatch] = useState("");
@@ -107,8 +108,8 @@ export function Platform() {
   const claimCard = deployment?.router ? <div className="card platform-card"><h3>Claim accrued fees</h3><p>Placement fees in MON and service fees in payment tokens accrue separately. Only the wallet that accrued them can claim them.</p><label>Fee asset address<input value={claimAsset} onChange={e => { setClaimAsset(e.target.value); setClaimAmount(undefined); setClaimToken(undefined); }} /></label><div className="actions"><Button variant="secondary" onClick={() => { setClaimAsset(ZeroAddress); setClaimAmount(undefined); }}>MON</Button>{deployment.usdc && <Button variant="secondary" onClick={() => { setClaimAsset(deployment.usdc!); setClaimAmount(undefined); }}>USDC</Button>}<Button variant="secondary" disabled={task.busy || !isAddress(claimAsset)} onClick={() => void task.run(checkClaim)}>Check claimable</Button></div>{claimAmount !== undefined && <><p>Claimable: <strong>{tokenAmount(claimAmount, claimToken)}</strong></p><Button disabled={task.busy || pending || BigInt(claimAmount) === 0n} onClick={() => void task.run(() => prepare({ kind: "claimFees", asset: claimAsset }))}>Claim fees</Button></>}</div> : null;
 
   return <section className="commerce-page platform-page">
-    <div className="section-heading"><div><h1>Platform</h1><p className="muted">Arbitration and platform settings</p></div><Button icon={RefreshCw} variant="secondary" disabled={task.busy} onClick={() => void task.run(load)}>Refresh</Button></div>
-    <Feedback {...task} />
+    <div className="section-heading"><div><h1>Platform</h1><p className="muted">Arbitration and platform settings</p></div><Button icon={RefreshCw} iconSpinning={refreshing} variant="secondary" disabled={task.busy} onClick={() => { setRefreshing(true); void task.run(load).finally(() => setRefreshing(false)); }}>Refresh</Button></div>
+    <Feedback {...task} busy={task.busy && !refreshing} />
     {!wallet.session ? <WalletGate /> : <>
       {operation?.progress === "review" && !operation.action && <div className="notice platform-operation" role="alert"><strong>Saved change unavailable</strong><p>Prepare this change again.</p><Button variant="secondary" onClick={() => setOperation(undefined)}>Dismiss</Button></div>}
       {operation?.progress === "review" && operation.action && !reviewOpen && <div className="notice platform-operation" role="status"><strong>Change ready to submit</strong><p>Your prepared change is saved. Continue when you are ready to sign.</p><Button onClick={() => setReviewOpen(true)}>Continue change</Button></div>}
@@ -149,7 +150,7 @@ export function Platform() {
 
         <details className="card platform-card platform-advanced"><summary>Advanced infrastructure</summary><div className="platform-setting"><h3>Batch size</h3><p>Current: {platform?.batchLimit}; allowed range: 1–{platform?.maxBatch}. Lowering may split pending batches.</p><label>New batch size<input type="number" min={1} max={platform?.maxBatch} value={batch} onChange={e => setBatch(e.target.value)} /></label><Button disabled={task.busy || pending || !validInteger(batch) || Number(batch) < 1 || Number(batch) > (platform?.maxBatch ?? 0) || batch === String(platform?.batchLimit)} onClick={() => void task.run(() => prepare({ kind: "setBatchLimit", value: batch }))}>Save batch size</Button></div><div className="platform-setting"><h3>Register storage service</h3><p>Registration is permanent. ID 1 is zkbytes; an adapter must also be configured before another service can be used.</p><label>New service ID<input type="number" min={2} max={4294967295} value={serviceId} onChange={e => setServiceId(e.target.value)} /></label><Button disabled={task.busy || pending || !validInteger(serviceId) || Number(serviceId) < 2 || Number(serviceId) > 4294967295} onClick={() => void task.run(() => prepare({ kind: "addStorageService", serviceId: Number(serviceId) }))}>Register service</Button></div></details>
       </section>}
-      {reviewOpen && operation?.progress === "review" && operation.action && <OrderDialog title={reviewSummary?.title ?? changeSummary(operation.action, platform, feeToken, myArbitrator, order, claimAmount, claimToken).title} onClose={() => setReviewOpen(false)}><p>Check the change before signing. Your wallet will ask you to authorize the exact transaction or sponsored action.</p><dl className="terms platform-review">{(reviewSummary ?? changeSummary(operation.action, platform, feeToken, myArbitrator, order, claimAmount, claimToken)).rows.map(([label, before, after]) => <div key={label}><dt>{label}</dt><dd><span>Current: {before}</span><span aria-hidden="true">→</span><strong>New: {after}</strong></dd></div>)}</dl><TransactionPanel record={operation} onChange={updateOperation} onFinalized={load} compactReview /><Button icon={X} variant="secondary" onClick={() => setReviewOpen(false)}>Close</Button></OrderDialog>}
+      {reviewOpen && operation?.progress === "review" && operation.action && <OrderDialog title={reviewSummary?.title ?? changeSummary(operation.action, platform, feeToken, myArbitrator, order, claimAmount, claimToken).title} onClose={() => setReviewOpen(false)}><TransactionPanel record={operation} summary={<dl className="terms platform-review">{(reviewSummary ?? changeSummary(operation.action, platform, feeToken, myArbitrator, order, claimAmount, claimToken)).rows.map(([label, before, after]) => <div key={label}><dt>{label}</dt><dd><span>Current: {before}</span><span aria-hidden="true">→</span><strong>New: {after}</strong></dd></div>)}</dl>} onChange={updateOperation} onFinalized={load} compactReview /></OrderDialog>}
     </>}
   </section>;
 }

@@ -151,7 +151,7 @@ export function SellerEditor() {
         {record.progress !== "checking" && <Button icon={ArrowLeft} variant="secondary" disabled={task.busy} onClick={() => setStage("review")}>Back to draft review</Button>}
       </>}
     </section>}
-    {publicationReviewOpen && wizard && stage === "transaction" && record && !published && record.progress !== "finalized" && <OrderDialog title="Publish offer" onClose={() => setPublicationReviewOpen(false)}><p>{record.publication?.visibility === "public" ? "Publish publicly in Discover" : "Publish privately by direct link"}</p><TransactionPanel key={record.id} record={record} onChange={setRecord} onFinalized={finishPublication} compactReview />{record.progress === "reverted" && record.publication && <Button icon={ArrowRight} variant="secondary" disabled={task.busy} onClick={() => void task.run(() => prepare(record.action?.kind === "create" ? "create" : "update", true, record.publication!.visibility))}>Prepare transaction again</Button>}<Feedback {...task} /></OrderDialog>}
+    {publicationReviewOpen && wizard && stage === "transaction" && record && !published && record.progress !== "finalized" && <OrderDialog title="Publish offer" onClose={() => setPublicationReviewOpen(false)}><p>{record.publication?.visibility === "public" ? "Publish publicly in Discover" : "Publish privately by direct link"}</p><TransactionPanel key={record.id} record={record} subject={form.title} onChange={setRecord} onFinalized={finishPublication} onRetry={record.publication ? () => prepare(record.action?.kind === "create" ? "create" : "update", true, record.publication!.visibility) : undefined} compactReview /><Feedback {...task} /></OrderDialog>}
     <Feedback {...task} />
   </section>;
 

@@ -1,7 +1,7 @@
 import { LoaderCircle, CircleAlert } from "lucide-react";
 import { LockKeyhole as ButtonLockKeyhole, Send as ButtonSend, RefreshCw as ButtonRefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { formatUnits, keccak256, Transaction, verifyTypedData, ZeroAddress } from "ethers";
 import { IndexedStore } from "@/storage/local-store";
@@ -13,6 +13,8 @@ import type { ReviewedTypedData } from "@/wallet/types";
 import { PurchaseJournal, purchaseMatches, type Operation } from "./purchase-journal";
 import type { Receiving } from "./client";
 import { reconcileAction } from "./reconcile";
+import { TransactionReview } from "./TransactionReview";
+import { TransactionDialogContext } from "./transaction-dialog-context";
 export const journal = new PurchaseJournal(new IndexedStore());
 export const native = ZeroAddress;
 export const randomId = () => `0x${Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, "0")).join("")}`;
@@ -60,11 +62,16 @@ export function useTask() {
   return { busy, error, run, setError };
 }
 export function Feedback({ busy, error }: { busy: boolean; error: string }) { return <>{busy && <p className="status-message" role="status"><LoaderCircle size={16} className="spin" aria-hidden="true" />Working...</p>}{error && <p className="status-message" role="alert"><CircleAlert size={16} aria-hidden="true" />{error}</p>}</>; }
-export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = false, buyerView = false, compactReview = false, onBusyChange }: { record: Operation; onChange(record: Operation): void; onFinalized?(): Promise<void>; autoSubmit?: boolean; buyerView?: boolean; compactReview?: boolean; onBusyChange?(busy: boolean): void }) {
+export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = false, buyerView = false, compactReview = false, onBusyChange, summary, subject, confirmLabel, onRetry, retryLabel }: { record: Operation; onChange(record: Operation): void; onFinalized?(): Promise<void>; autoSubmit?: boolean; buyerView?: boolean; compactReview?: boolean; onBusyChange?(busy: boolean): void; summary?: ReactNode; subject?: string; confirmLabel?: string; onRetry?(): Promise<unknown>; retryLabel?: string }) {
   const api = useCommerce(), wallet = useSession(), task = useTask(), location = useLocation();
   const [router, setRouter] = useState<string>();
-  useEffect(() => { void api.read<Deployment>("/deployment").then(value => setRouter(value.contract.toLowerCase() === record.deployment.contract.toLowerCase() ? value.router : undefined)).catch(() => {}); }, [record.deployment.contract]);
+  const [coverageLoaded, setCoverageLoaded] = useState(false), [paySelf, setPaySelf] = useState(record.payNetworkFeeSelf ?? false);
+  const dialog = useContext(TransactionDialogContext);
+  useEffect(() => { let live = true; setCoverageLoaded(false); setRouter(undefined); void api.read<Deployment>("/deployment").then(value => { if (live) setRouter(value.contract.toLowerCase() === record.deployment.contract.toLowerCase() ? value.router : undefined); }).catch(() => {}).finally(() => { if (live) setCoverageLoaded(true); }); return () => { live = false; }; }, [record.deployment.contract]);
+  useEffect(() => { if (record.payNetworkFeeSelf !== undefined) setPaySelf(record.payNetworkFeeSelf); }, [record.payNetworkFeeSelf]);
   useEffect(() => { onBusyChange?.(task.busy); }, [task.busy, onBusyChange]);
+  const setDialogBusy = compactReview ? dialog?.setBusy : undefined;
+  useEffect(() => { setDialogBusy?.(task.busy || wallet.busy); return () => setDialogBusy?.(false); }, [task.busy, wallet.busy, setDialogBusy]);
   const poll = useRef<() => void>(() => {});
   const autoStarted = useRef(false);
   useEffect(() => { if (autoSubmit && !autoStarted.current && record.progress === "review") { autoStarted.current = true; void task.run(send); } }, [autoSubmit, record.id]);
@@ -125,7 +132,7 @@ export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = f
     const fresh = await api.request<PreparedTx>("/transactions/prepare", record.action);
     const tx = record.transaction;
     if (fresh.to !== tx.to || fresh.data !== tx.data || fresh.value !== tx.value || fresh.nonce !== tx.nonce || BigInt(fresh.maxFeePerGas) > BigInt(tx.maxFeePerGas) || BigInt(fresh.gas) > BigInt(tx.gas)) throw new Error("Transaction details changed. Prepare and review again.");
-    let pending = await save({ ...record, activeHash: undefined, progress: "checking" });
+    let pending = await save({ ...record, payNetworkFeeSelf: true, activeHash: undefined, progress: "checking" });
     await wallet.runOperation(async (session, isCurrent) => {
       if (session.address.toLowerCase() !== record.account || !isCurrent()) throw new Error("Wallet changed.");
       const reviewed: ReviewedTransaction = { chainId: 10143, to: tx.to as `0x${string}`, data: tx.data as `0x${string}`, value: BigInt(tx.value), nonce: tx.nonce, gas: BigInt(tx.gas), maxFeePerGas: BigInt(tx.maxFeePerGas), maxPriorityFeePerGas: BigInt(tx.maxPriorityFeePerGas) };
@@ -168,12 +175,24 @@ export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = f
       if (!isCurrent() || verifyTypedData(typedData.domain, typedData.types, typedData.message, signed).toLowerCase() !== record.account) throw new Error("Wallet changed while signing.");
       return signed;
     });
-    const pending = await save({ ...record, progress: "checking", activeHash: undefined, relayNonce: nonce,
+    const pending = await save({ ...record, payNetworkFeeSelf: false, progress: "checking", activeHash: undefined, relayNonce: nonce,
       relayExpiresAt: new Date(Number(validBefore) * 1000).toISOString() });
     const job = await api.request<{ id: string }>("/relay/payments", { kind: "action", chainId: 10143, escrow: record.deployment.contract, router,
       actionData: fresh.data, authorization: { actor: record.account, nonce, validAfter, validBefore, signature } });
     await save({ ...pending, relayJobId: job.id });
   }
+  const coversFees = !autoSubmit && !buyerView && !!router && canRelay(record.action) && (!record.transaction || record.transaction.value === "0" && record.transaction.to.toLowerCase() === record.deployment.contract.toLowerCase());
+  async function changeFeeMode(selfPay: boolean) {
+    if (record.progress !== "review" || record.relayNonce || !coversFees) return;
+    let transaction = record.transaction;
+    if (selfPay && !transaction) {
+      try { transaction = await api.request<PreparedTx>("/transactions/prepare", record.action!); }
+      catch (error) { if (error instanceof ApiError && error.code === "INSUFFICIENT_MON_FOR_PAYMENT_AND_GAS") throw new Error("Not enough MON for network fees. Top up MON or keep Network fee covered selected."); throw error; }
+    }
+    await save({ ...record, transaction, payNetworkFeeSelf: selfPay });
+    setPaySelf(selfPay);
+  }
+  if (compactReview) return <TransactionReview record={record} summary={summary} subject={subject} confirmLabel={confirmLabel} orderPath={record.orderId ? record.requestId || location.pathname.startsWith("/purchases/") ? `/purchases/${record.orderId}` : location.pathname.startsWith("/sales/") ? `/sales/orders/${record.orderId}` : location.pathname.startsWith("/arbitration/") ? `/arbitration/${record.orderId}` : `/orders/${record.orderId}` : undefined} canCoverFees={coversFees} checkingCoverage={!buyerView && !coverageLoaded} selfPay={!coversFees || paySelf} busy={task.busy || wallet.busy} error={task.error} onFeeChange={value => void task.run(() => changeFeeMode(value))} onConfirm={() => void task.run(coversFees && !paySelf ? sponsor : send)} onCheck={() => void task.run(check)} onRetry={onRetry ? () => void task.run(onRetry) : undefined} retryLabel={retryLabel} />;
   if (buyerView) return <section className="transaction-panel buyer-transaction"><p role="status">{record.progress === "checking" ? "Waiting for confirmation..." : record.progress === "reverted" ? "The transaction did not complete. Return to review before retrying." : "Review and confirm"}</p>
     {record.transaction && <><p>Maximum network fee: <strong>{formatUnits(BigInt(record.transaction.gas) * BigInt(record.transaction.maxFeePerGas), 18)} MON</strong></p>{record.progress === "review" && <Button icon={ButtonSend} disabled={task.busy || wallet.busy} onClick={() => void task.run(send)}>{record.action?.kind === "approve" ? "Approve token payment" : "Confirm payment"}</Button>}</>}
     {record.progress === "checking" && <Button icon={ButtonRefreshCw} variant="secondary" disabled={task.busy || wallet.busy} onClick={() => void task.run(check)}>Check status</Button>}
@@ -187,14 +206,15 @@ export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = f
     {record.hashes.map(hash => <p className="address" key={hash}>Transaction: {hash}</p>)}<Feedback {...task} />
   </section>;
 }
-export async function prepareOperation(api: ReturnType<typeof useCommerce>, record: Operation, action: Action) {
+export async function prepareOperation(api: ReturnType<typeof useCommerce>, record: Operation, action: Action, selfPay = false) {
   let transaction: PreparedTx | undefined;
   try { transaction = await api.request<PreparedTx>("/transactions/prepare", action); }
   catch (error) {
+    if (selfPay && error instanceof ApiError && error.code === "INSUFFICIENT_MON_FOR_PAYMENT_AND_GAS") throw new Error("Not enough MON for network fees. Top up MON or switch off Pay network fee myself.");
     if (!(error instanceof ApiError) || error.code !== "INSUFFICIENT_MON_FOR_PAYMENT_AND_GAS" || !canRelay(action) ||
         !(await api.read<Deployment>("/deployment")).router) throw error;
     const request = await api.request<{ to: string; value: string }>("/transactions/request", action);
     if (request.value !== "0" || request.to.toLowerCase() !== record.deployment.contract.toLowerCase()) throw error;
   }
-  return journal.save({ ...record, action, transaction, activeHash: undefined, progress: "review" });
+  return journal.save({ ...record, ...(record.progress === "reverted" ? { relayJobId: undefined, relayNonce: undefined, relayExpiresAt: undefined } : {}), action, transaction, activeHash: undefined, progress: "review" });
 }

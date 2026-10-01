@@ -74,11 +74,11 @@ function PurchaseList({ address }: { address: string }) {
   const confirmed = records.filter(record => record.progress === "finalized" && record.orderId && !indexed.has(record.orderId));
   const syncing = page.indexing?.status === "syncing" || page.indexing?.status === "unavailable";
   return <section className="commerce-page purchases-page">
-    <div className="section-heading"><h1>Your purchases</h1><Button icon={RefreshCw} variant="secondary" disabled={task.busy} onClick={() => void task.run(async () => { setTokens({ [ZeroAddress]: { symbol: "MON", decimals: 18 } }); setLoaded(false); await Promise.all([load(), loadRecords()]); })}>Refresh</Button></div>
+    <div className="section-heading"><h1>Your purchases</h1><Button icon={RefreshCw} iconSpinning={task.busy && !removeTarget} variant="secondary" disabled={task.busy} onClick={() => void task.run(async () => { await Promise.all([load(), loadRecords()]); })}>Refresh</Button></div>
     <div className="purchase-account"><CopyableField label="Account" value={address} displayValue={`${address.slice(0, 6)}...${address.slice(-4)}`} /></div>
     <div className="purchase-filters" role="group" aria-label="Filter purchases">{([["all", "All"], ["active", "Active"], ["attention", "Needs attention"], ["completed", "Completed"]] as const).map(([value, label]) => <Button key={value} icon={value === "attention" ? Clock : value === "completed" ? CheckCircle2 : ShoppingBag} variant={filter === value ? "default" : "ghost"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</Button>)}</div>
     {syncing && <p className="muted" role="status">{page.indexing?.status === "unavailable" ? "Order history is temporarily unavailable. Recent purchases may be missing." : "Order history is syncing. Recent purchases may take a moment to appear."}</p>}
-    <Feedback {...task} />
+    <Feedback {...task} busy={task.busy && !loaded} />
     <div className="purchase-list">{shown.map(order => {
       const status = purchaseStatus(order), token = order.order.terms.token.toLowerCase(), metadata = tokens[token], presentation = tokenPresentation(10143, token), Icon = presentation.icon;
       return <article className="card purchase-card" key={order.orderId}>
@@ -97,7 +97,7 @@ function PurchaseList({ address }: { address: string }) {
         </div>
       </article>;
     })}</div>
-    {loaded && !task.busy && !shown.length && <div className="empty-state"><ShoppingBag size={28} aria-hidden="true" /><h2>{page.items.length || filter !== "all" ? "No matching purchases" : "No purchases yet"}</h2><p>{page.nextCursor ? "Load more purchases to see additional results." : filter === "all" ? "Your purchases will appear here after you place an order." : "Try another filter to see your purchases."}</p>{filter === "all" && !page.nextCursor && <Button asChild variant="secondary"><Link to="/discover"><Compass aria-hidden="true" />Explore offers</Link></Button>}</div>}
+    {loaded && !shown.length && <div className="empty-state"><ShoppingBag size={28} aria-hidden="true" /><h2>{page.items.length || filter !== "all" ? "No matching purchases" : "No purchases yet"}</h2><p>{page.nextCursor ? "Load more purchases to see additional results." : filter === "all" ? "Your purchases will appear here after you place an order." : "Try another filter to see your purchases."}</p>{filter === "all" && !page.nextCursor && <Button asChild variant="secondary"><Link to="/discover"><Compass aria-hidden="true" />Explore offers</Link></Button>}</div>}
     {page.nextCursor && <Button icon={ArrowRight} variant="secondary" disabled={task.busy} onClick={() => void task.run(() => load(page.nextCursor!))}>More purchases</Button>}
     {recoveryError && <p role="status">{recoveryError}</p>}
     {!!unfinished.length && <section className="unfinished-purchases"><h2>Unfinished purchases</h2>{unfinished.map(record => {

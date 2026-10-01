@@ -116,7 +116,7 @@ it("shows the account chooser when a saved wallet is unavailable locally", async
   mocks.unlock.mockImplementation(async () => ({ ...session, kind: "builtin", transport: "managed", signAppAuthentication: appSign, dispose: vi.fn() }));
   mountAccess(); fireEvent.click(await screen.findByText("Open protected data"));
   expect(await screen.findByRole("dialog")).toHaveTextContent("Sign in to continue");
-  expect(screen.getByRole("button", { name: "Sign in with passkey" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Sign in with passkey" })).toBeInTheDocument();
   expect(mocks.unlock).not.toHaveBeenCalled(); expect(appSign).not.toHaveBeenCalled();
 });
 

@@ -21,6 +21,26 @@ beforeEach(() => {
 });
 function orderTree(path = mocks.address === seller ? "/sales/orders/7" : "/purchases/7") { return <MemoryRouter initialEntries={[path]}><Routes><Route path="/orders/:id" element={<OrderPage />} /><Route path="/purchases/:id" element={<OrderPage role="buyer" />} /><Route path="/sales/orders/:id" element={<OrderPage role="seller" />} /><Route path="/arbitration/:id" element={<OrderPage role="arbitrator" />} /></Routes></MemoryRouter>; }
 function mount(path?: string) { return render(orderTree(path)); }
+it.each([false, true])('keeps the order summary mounted during refresh when authenticated is %s', async authenticated => {
+  mocks.authenticated = authenticated;
+  mount();
+  const heading = await screen.findByRole('heading', { name: 'Private workshop', level: 1 });
+  const refresh = screen.getByRole('button', { name: 'Refresh order' });
+  await waitFor(() => expect(refresh).toBeEnabled());
+  let finish!: (value: OrderView) => void;
+  const client = authenticated ? mocks.request : mocks.read;
+  client.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  fireEvent.click(refresh);
+  expect(refresh).toHaveAttribute('aria-busy', 'true');
+  expect(refresh.querySelector('svg.spin')).toBeInTheDocument();
+  expect(refresh).toBeDisabled();
+  expect(heading).toBeInTheDocument();
+  expect(screen.queryByText('Working...')).not.toBeInTheDocument();
+  expect(screen.queryByText('Loading order...')).not.toBeInTheDocument();
+  finish(view);
+  await waitFor(() => expect(refresh).toBeEnabled());
+  expect(heading).toBeInTheDocument();
+});
 it('keeps public offer details when unlocking history returns a private order without a saved offer', async () => {
   mocks.authenticated = false;
   view.offer.images = [{ id: 'cover', url: '/offer-image', thumbnailUrl: '/offer-thumbnail', width: 640, height: 480 }];
@@ -141,8 +161,8 @@ it('uploads a problem report and opens transaction review without a saved draft'
   await waitFor(() => expect(mocks.request).toHaveBeenCalledWith('/transactions/prepare', expect.objectContaining({ kind: 'openDispute', orderId: '7' })));
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Report a problem' })).not.toBeInTheDocument());
   const review = await screen.findByRole('dialog', { name: 'Send problem report' });
-  expect(within(review).getByText('Choose how to submit')).toBeInTheDocument();
-  expect(within(review).getByRole('button', { name: 'Confirm in wallet and pay gas' })).toBeInTheDocument();
+  expect(within(review).getByText('Maximum network fee')).toBeInTheDocument();
+  expect(within(review).getByRole('button', { name: 'Send problem report' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Review and send' })).not.toBeInTheDocument();
   fireEvent.click(within(review).getByRole('button', { name: 'Close dialog' }));
   fireEvent.click(screen.getByRole('button', { name: 'Continue sending' }));
@@ -154,7 +174,7 @@ it('reopens a saved conversation transaction from the Conversation section', asy
   mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Check message status' }));
   const review = screen.getByRole('dialog', { name: 'Send problem report' });
-  expect(within(review).getByText('Checking transaction')).toBeInTheDocument();
+  expect(within(review).getByText('Waiting for confirmation. You can close this dialog and check again later.')).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Review and send' })).not.toBeInTheDocument();
 });
 it('reviews a seller reply transaction in the Conversation dialog', async () => {
@@ -176,7 +196,7 @@ it('reviews a seller reply transaction in the Conversation dialog', async () => 
   fireEvent.click(within(composer).getByRole('button', { name: 'Review content' }));
   fireEvent.click(within(composer).getByRole('button', { name: 'Continue to transaction' }));
   const review = await screen.findByRole('dialog', { name: 'Send reply' });
-  expect(within(review).getByText('Choose how to submit')).toBeInTheDocument();
+  expect(within(review).getByText('Maximum network fee')).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Review and send' })).not.toBeInTheDocument();
 });
 it('gives the seller a prepare-review flow without prompting the wallet for preview', async () => {
@@ -212,8 +232,8 @@ it('opens seller delivery transaction review in a dialog after preparing content
   fireEvent.click(within(composer).getByRole('button', { name: 'Review content' }));
   fireEvent.click(within(composer).getByRole('button', { name: 'Send delivery' }));
   const review = await screen.findByRole('dialog', { name: 'Delivery processing' });
-  expect(within(review).getByText('Choose how to submit')).toBeInTheDocument();
-  expect(within(review).getByRole('button', { name: 'Confirm in wallet and pay gas' })).toBeInTheDocument();
+  expect(within(review).getByText('Maximum network fee')).toBeInTheDocument();
+  expect(within(review).getByRole('button', { name: 'Confirm delivery' })).toBeInTheDocument();
   expect(document.querySelectorAll('.order-pending .transaction-panel')).toHaveLength(0);
 });
 it('keeps case tools contextual and replaces sequence entry with selectable messages', async () => {
@@ -318,8 +338,8 @@ it('keeps refund transaction review in the dialog and lets the buyer reopen it',
   expect(within(dialog).getByRole('button', { name: 'Review transaction' })).toBeInTheDocument();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Review transaction' }));
   const review = await screen.findByRole('dialog', { name: 'Review refund' });
-  expect(within(review).getByText('Choose how to submit')).toBeInTheDocument();
-  expect(within(review).getByRole('button', { name: 'Confirm in wallet and pay gas' })).toBeInTheDocument();
+  expect(within(review).getByText('Maximum network fee')).toBeInTheDocument();
+  expect(within(review).getByRole('button', { name: 'Confirm refund' })).toBeInTheDocument();
   expect(document.querySelectorAll('.order-detail > .transaction-panel')).toHaveLength(0);
   fireEvent.click(within(review).getByRole('button', { name: 'Close dialog' }));
   expect(screen.getByRole('button', { name: 'Continue refund' })).toBeInTheDocument();
@@ -333,18 +353,18 @@ it('keeps seller claim review and confirmation in a reopenable dialog', async ()
   fireEvent.click(await screen.findByRole('button', { name: 'Claim payment' }));
   fireEvent.click(within(screen.getByRole('dialog', { name: 'Claim payment' })).getByRole('button', { name: 'Review transaction' }));
   const dialog = await screen.findByRole('dialog', { name: 'Claim payment' });
-  expect(await within(dialog).findByRole('button', { name: 'Confirm in wallet and pay gas' })).toBeInTheDocument();
+  expect(await within(dialog).findByRole('button', { name: 'Claim payment' })).toBeInTheDocument();
   expect(document.querySelectorAll('.order-detail > .transaction-panel')).toHaveLength(0);
   fireEvent.click(within(dialog).getByRole('button', { name: 'Close dialog' }));
   fireEvent.click(screen.getByRole('button', { name: 'Continue claim payment' }));
-  expect(screen.getByRole('dialog', { name: 'Claim payment' })).toHaveTextContent('Choose how to submit');
+  expect(screen.getByRole('dialog', { name: 'Claim payment' })).toHaveTextContent('Maximum network fee');
 });
 it('reopens a saved arbitration action in a transaction dialog', async () => {
   view.eligibility = { requestArbitration: true };
   mocks.ops = [{ id: 'lifecycle:saved-arbitration', account: buyer, deployment: { chainId: 10143, contract: '0x3333333333333333333333333333333333333333' }, orderId: '7', action: { kind: 'requestArbitration', orderId: '7' }, hashes: [], progress: 'checking', version: 1 }];
   mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Check transaction status' }));
-  expect(screen.getByRole('dialog', { name: 'Arbitration transaction' })).toHaveTextContent('Checking transaction');
+  expect(screen.getByRole('dialog', { name: 'Arbitration transaction' })).toHaveTextContent('Waiting for confirmation.');
   expect(document.querySelectorAll('.order-pending .transaction-panel')).toHaveLength(0);
 });
 it('reopens a saved seller delivery transaction in its dialog', async () => {
@@ -353,7 +373,7 @@ it('reopens a saved seller delivery transaction in its dialog', async () => {
   mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Check delivery status' }));
   const dialog = screen.getByRole('dialog', { name: 'Delivery processing' });
-  expect(within(dialog).getByText('Checking transaction')).toBeInTheDocument();
+  expect(within(dialog).getByText('Waiting for confirmation. You can close this dialog and check again later.')).toBeInTheDocument();
   expect(document.querySelectorAll('.order-pending .transaction-panel')).toHaveLength(0);
   fireEvent.click(within(dialog).getByRole('button', { name: 'Close dialog' }));
   fireEvent.click(screen.getByRole('button', { name: 'Check delivery status' }));
@@ -364,7 +384,7 @@ it('offers a way to check a saved refund after reopening the order', async () =>
   mocks.ops = [{ id: 'saved-refund', account: buyer, deployment: { chainId: 10143, contract: '0x3333333333333333333333333333333333333333' }, orderId: '7', action: { kind: 'claimRefund', orderId: '7' }, hashes: [], progress: 'checking', version: 1 }];
   mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Check refund status' }));
-  expect(screen.getByRole('dialog', { name: 'Review refund' })).toHaveTextContent('Checking transaction');
+  expect(screen.getByRole('dialog', { name: 'Review refund' })).toHaveTextContent('Waiting for confirmation.');
 });
 it('does not continue a refund when eligibility changed while signing in', async () => {
   mocks.authenticated = false; view.order.state = 1; view.eligibility = { claimRefund: true };

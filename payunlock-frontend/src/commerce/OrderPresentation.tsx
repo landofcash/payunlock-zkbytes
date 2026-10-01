@@ -12,6 +12,7 @@ import { purchaseStatus } from "./Purchases";
 import { OfferCover } from "./OfferImages";
 import { orderStatusTone } from "./order-status-tone";
 import { date } from "./ui";
+import { TransactionDialogContext } from "./transaction-dialog-context";
 type Summary = Pick<OrderView, "orderId" | "block" | "canceled"> & { order: PublicOrder["order"]; offer: { title?: string; description?: string; images?: OrderView["offer"]["images"] } | null };
 export function OrderAmount({ token, price }: { token: string; price: string }) {
   const api = useCommerce(), [asset, setAsset] = useState<{ symbol: string; decimals: number } | null>();
@@ -53,8 +54,10 @@ export function OrderSummary({ view, account, refresh, actions, tools, role }: {
 }
 export function OrderDialog({ title, onClose, children }: { title: string; onClose(): void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null), id = useId();
+  const [busy, setBusy] = useState(false);
+  const close = () => { if (!busy) onClose(); };
   useEffect(() => { const d = ref.current; d?.showModal(); return () => d?.close(); }, []);
-  return createPortal(<dialog ref={ref} className="approval-dialog wallet-action-dialog order-dialog" aria-labelledby={id} onCancel={e => { e.preventDefault(); onClose(); }}><div className="section-heading"><h2 id={id}>{title}</h2><Button icon={X} size="icon" variant="ghost" aria-label="Close dialog" onClick={onClose} /></div>{children}</dialog>, document.body);
+  return createPortal(<dialog ref={ref} className="approval-dialog wallet-action-dialog order-dialog" aria-labelledby={id} onCancel={e => { e.preventDefault(); close(); }}><div className="section-heading"><h2 id={id}>{title}</h2><Button icon={X} size="icon" variant="ghost" aria-label="Close dialog" disabled={busy} onClick={close} /></div><TransactionDialogContext.Provider value={{ close, setBusy }}>{children}</TransactionDialogContext.Provider></dialog>, document.body);
 }
 export function eventLabel(name: string, data?: Record<string, unknown>) {
   if (name === "RecordPublished") return String(data?.sequence) === "0" ? "Delivery published" : "Message sent";

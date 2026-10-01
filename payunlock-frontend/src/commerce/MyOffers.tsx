@@ -23,8 +23,8 @@ function OfferList({ filter }: { filter: "all" | "draft" | "published" }) {
     if (live.current) { setPage(previous => ({ ...result, items: after ? [...previous.items, ...result.items] : result.items })); setLoaded(true); }
   }
   useEffect(() => { live.current = true; void task.run(() => load()); return () => { live.current = false; }; }, []);
-  return <><div className="offers-list-toolbar"><nav className="offer-filters" aria-label="Offer filters">{(["all", "draft", "published"] as const).map(value => <Link key={value} to={`/offers?filter=${value}`} aria-current={filter === value ? "page" : undefined}>{value === "all" ? "All" : value === "draft" ? "Drafts" : "Published"}</Link>)}</nav><Button icon={RefreshCw} variant="ghost" disabled={task.busy} onClick={() => void task.run(() => load())}>Refresh offers</Button></div>
-    <Feedback {...task} />
+  return <><div className="offers-list-toolbar"><nav className="offer-filters" aria-label="Offer filters">{(["all", "draft", "published"] as const).map(value => <Link key={value} to={`/offers?filter=${value}`} aria-current={filter === value ? "page" : undefined}>{value === "all" ? "All" : value === "draft" ? "Drafts" : "Published"}</Link>)}</nav><Button icon={RefreshCw} iconSpinning={task.busy} variant="ghost" disabled={task.busy} onClick={() => void task.run(() => load())}>Refresh offers</Button></div>
+    <Feedback {...task} busy={task.busy && !loaded} />
     <div className="offer-grid">{page.items.map(product => {
       const draft = product.visibility === "draft";
       return <article className="card seller-offer-card" key={product.id}>
@@ -35,7 +35,7 @@ function OfferList({ filter }: { filter: "all" | "draft" | "published" }) {
         </div>
       </article>;
     })}</div>
-    {loaded && !task.busy && !task.error && !page.items.length && <div className="empty-state"><FilePenLine size={28} aria-hidden="true" /><h3>{filter === "draft" ? "No saved drafts" : filter === "published" ? "No published offers" : "No offers yet"}</h3><p>{filter === "published" ? "Finish a draft and publish it to see it here." : "Create an offer and save it as a draft to continue later."}</p></div>}
+    {loaded && !task.error && !page.items.length && <div className="empty-state"><FilePenLine size={28} aria-hidden="true" /><h3>{filter === "draft" ? "No saved drafts" : filter === "published" ? "No published offers" : "No offers yet"}</h3><p>{filter === "published" ? "Finish a draft and publish it to see it here." : "Create an offer and save it as a draft to continue later."}</p></div>}
     {page.nextCursor && <Button icon={ArrowRight} variant="secondary" disabled={task.busy} onClick={() => void task.run(() => load(page.nextCursor!))}>More offers</Button>}
   </>;
 }
