@@ -20,7 +20,10 @@ export class CatalogRepository {
   }
   async list(seller: string | undefined, after: string | undefined, limit: number, filter: "all" | "draft" | "published" = "all") {
     const result = await this.db.query<ProductRow>(`SELECT id,seller,title,description,images,visibility,draft_terms,revision FROM catalog_products
-      WHERE ($1::text IS NULL AND visibility='public' OR seller=$1) AND deployment_scope=$4 AND ($2::uuid IS NULL OR id>$2::uuid) AND ($5::text='all' OR ($5='draft' AND visibility='draft') OR ($5='published' AND visibility IN ('public','hidden'))) ORDER BY id LIMIT $3`, [seller ?? null, after ?? null, limit, deploymentKey, filter]);
+      WHERE ($1::text IS NULL AND visibility='public' OR seller=$1) AND deployment_scope=$4
+      AND ($2::uuid IS NULL OR (created_at,id)<(SELECT created_at,id FROM catalog_products WHERE id=$2::uuid AND deployment_scope=$4))
+      AND ($5::text='all' OR ($5='draft' AND visibility='draft') OR ($5='published' AND visibility IN ('public','hidden')))
+      ORDER BY created_at DESC,id DESC LIMIT $3`, [seller ?? null, after ?? null, limit, deploymentKey, filter]);
     return result.rows;
   }
   async get(id: string, seller?: string): Promise<ProductRow> {
