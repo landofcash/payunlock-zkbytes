@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, FilePenLine, Package, Plus, RefreshCw, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { truncateText } from "@/lib/truncate-text";
 import { ProtectedAccess, useCommerce, type Page, type Product } from "./client";
 import { Feedback, useTask } from "./ui";
 
@@ -29,7 +30,7 @@ function OfferList({ filter }: { filter: "all" | "draft" | "published" }) {
       const draft = product.visibility === "draft";
       return <article className="card seller-offer-card" key={product.id}>
         <span className={`seller-offer-badge ${draft ? "is-draft" : ""}`}>{draft ? "Draft" : product.visibility === "hidden" ? "Published · Hidden" : "Published"}</span>
-        <OfferCover images={product.images ?? []} title={product.title} /><h3>{product.title}</h3>{product.description && <p>{product.description.slice(0, 160)}</p>}
+        <OfferCover images={product.images ?? []} title={product.title} /><h3>{product.title}</h3>{product.description && <p>{truncateText(product.description, 160)}</p>}
         <div className="actions"><Button asChild variant={draft ? "default" : "secondary"}><Link to={`/sales/products/${product.id}`}>{draft ? <FilePenLine aria-hidden="true" /> : <Settings2 aria-hidden="true" />}{draft ? "Continue editing" : "Manage offer"}</Link></Button>
           {!draft && <Button asChild variant="ghost"><Link to={`/sales/products/${product.id}/orders`}><Package aria-hidden="true" />Deliver orders</Link></Button>}
         </div>
