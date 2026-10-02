@@ -45,9 +45,10 @@ export function DiaTextReveal({ text, colors = DEFAULT_COLORS, textColor = "var(
     return () => controls.stop();
   }, [text, duration, delay, reducedMotion, position]);
 
+  if (reducedMotion) return <span className={cn("dia-text-reveal", className)} style={{ color: textColor }}>{text}</span>;
+
   return <motion.span className={cn("dia-text-reveal", className)}
     style={{ color: "transparent", backgroundClip: "text", WebkitBackgroundClip: "text", backgroundImage }}>
     {text}
   </motion.span>;
 }
-

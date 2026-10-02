@@ -647,6 +647,30 @@ body .ui-button.rainbow-button::before {
   animation: offer-rainbow 2s linear infinite;
   pointer-events: none;
 }
+/* Outline treatment for the hero links; the purchase button keeps its filled variant. */
+body .hero .ui-button.rainbow-outline {
+  --rainbow-color-1: var(--accent);
+  --rainbow-color-2: #b361d5;
+  --rainbow-color-3: #638fdb;
+  --rainbow-color-4: #6ecccc;
+  --rainbow-color-5: #a998df;
+  --rainbow-outline-fill: var(--surface);
+  min-height: 46px;
+  padding: 11px 18px;
+  border: 1px solid var(--border);
+  border-bottom-color: transparent;
+  border-radius: min(12px, var(--radius));
+  color: var(--text);
+  background: linear-gradient(var(--rainbow-outline-fill), var(--rainbow-outline-fill)) padding-box, linear-gradient(90deg, var(--rainbow-color-1), var(--rainbow-color-5), var(--rainbow-color-3), var(--rainbow-color-4), var(--rainbow-color-2)) border-box;
+  background-size: 200% 100%;
+  animation-duration: 4s;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+body .hero .ui-button.rainbow-outline::before { left: 24%; bottom: -8%; width: 52%; height: 12%; opacity: .25; animation-duration: 4s; }
+body .hero .ui-button.rainbow-outline:hover { --rainbow-outline-fill: color-mix(in srgb, var(--surface) 94%, var(--accent)); border-color: color-mix(in srgb, var(--border) 50%, var(--accent)); border-bottom-color: transparent; filter: none; }
+[data-theme="terminal"] body .hero .ui-button.rainbow-outline { --rainbow-color-2: #92ddb5; --rainbow-color-3: #7bdac4; --rainbow-color-4: #b5efce; --rainbow-color-5: #b9e997; }
+[data-theme="cyberpunk"] body .hero .ui-button.rainbow-outline { --rainbow-color-2: var(--accent-soft); --rainbow-color-3: #7ea8ff; --rainbow-color-4: #8ff0e8; --rainbow-color-5: #bd9dff; }
+[data-theme="cosmic"] body .hero .ui-button.rainbow-outline { --rainbow-color-2: #dbacf0; --rainbow-color-3: #a2b6f6; --rainbow-color-4: #a3d5e6; --rainbow-color-5: #bfa7ef; }
 @keyframes offer-rainbow { to { background-position: 200% 0; } }
 @media (prefers-reduced-motion: reduce) { body .ui-button.rainbow-button, body .ui-button.rainbow-button::before { animation: none; } }
 body .ui-button.rainbow-button:disabled { animation: none; }

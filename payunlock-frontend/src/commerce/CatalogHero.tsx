@@ -80,6 +80,6 @@ export function CatalogHero() {
       {slides.map((slide, index) => <button key={slide.title} type="button" className="hero-slide-dot"
         aria-label={`Show message ${index + 1}: ${slide.title.replace("\n", " ")}`} aria-pressed={active === index} onClick={() => setActive(index)}><span /></button>)}
     </div>
-    <div className="actions"><Button asChild className="rainbow-button"><Link to="/create"><Box aria-hidden="true" />Create an offer</Link></Button><Button asChild className="rainbow-button"><Link to="/discover"><ArrowRight aria-hidden="true" />Explore offers</Link></Button></div>
+    <div className="actions"><Button asChild variant="outline" className="rainbow-button rainbow-outline"><Link to="/create"><Box aria-hidden="true" />Create an offer</Link></Button><Button asChild variant="outline" className="rainbow-button rainbow-outline"><Link to="/discover"><ArrowRight aria-hidden="true" />Explore offers</Link></Button></div>
   </section>;
 }

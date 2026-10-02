@@ -70,6 +70,8 @@ export function Highlighter({
       const currentAnnotation = annotate(element, annotationConfig)
       annotation = currentAnnotation
       currentAnnotation.show()
+      const svg = action === "highlight" ? element.previousElementSibling : element.nextElementSibling
+      if (svg?.matches("svg.rough-annotation")) svg.setAttribute("aria-hidden", "true")
 
       resizeObserver = new ResizeObserver(() => {
         currentAnnotation.hide()
@@ -104,4 +106,3 @@ export function Highlighter({
     </span>
   )
 }
-
