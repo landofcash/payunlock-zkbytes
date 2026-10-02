@@ -12,9 +12,6 @@ import {
   sealedSeedLink,
   sealedSeedFragment,
   parseSealedSeedFragment } from "@/exchange/sealed-seed";
-import {
-  sealSeed as sealLegacy,
-  sealedSeedFragment as legacyFragment } from "@/exchange/sealed-seed-v2";
 
 async function fixture() {
   const privateKey = randomBytes(32);
@@ -133,15 +130,7 @@ describe("direct encrypted seed links", () => {
     }
   });
 
-  it("still opens previously exported v2 seeds", async () => {
-    const { privateKey, card, seed } = await fixture();
-    try {
-      const legacy = await sealLegacy(seed, card);
-      expect(await openSealedSeed(legacyFragment(legacy), privateKey)).toBe(
-        seed,
-      );
-    } finally {
-      privateKey.fill(0);
-    }
+  it("rejects obsolete Base32 v2 seed links", async () => {
+    await expect(openSealedSeed(`${"a".repeat(52)}-${"a".repeat(242)}`, new Uint8Array(32))).rejects.toThrow("Cannot open this sealed seed");
   });
 });

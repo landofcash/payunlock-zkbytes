@@ -7,13 +7,13 @@ const hash = `0x${"11".repeat(32)}`, buyer = Wallet.createRandom(), seller = Wal
 const wallet = buyer.address.toLowerCase();
 function fixture() {
   const chain = new ChainService("https://unused.invalid"), catalog = Object.create(CatalogRepository.prototype) as CatalogRepository;
-  const configuration: CheckoutConfiguration = { chainId: 10143, contract: escrowAddress, seller, productKey: hash, expectedTerms: hash, status: 1, allowed: true, block: { number: 1, hash, timestamp: 1 }, sellerReceiving: { nonce: hash, publicKey: hash }, terms: { token: "0x0000000000000000000000000000000000000000", price: "1000", hasEventEnd: false, eventEnd: "0", reviewWindow: "0", responseWindow: "60", commitmentWindow: "60" } };
+  const configuration: CheckoutConfiguration = { chainId: 10143, contract: escrowAddress, seller, productKey: hash, expectedTerms: hash, status: 1, allowed: true, authorizationMode: "direct-only", serviceFee: { bps: 0, treasury: seller, sellerCapBps: 0 }, block: { number: 1, hash, timestamp: 1 }, sellerReceiving: { nonce: hash, publicKey: hash }, terms: { token: "0x0000000000000000000000000000000000000000", price: "1000", hasEventEnd: false, eventEnd: "0", reviewWindow: "0", responseWindow: "60", commitmentWindow: "60" } };
   vi.spyOn(catalog, "intent").mockResolvedValue({ id: "intent", product_id: "product", buyer: wallet, request_id: hash, revision: 1, expected_terms: hash, buyer_receiving: configuration.sellerReceiving, configuration });
   vi.spyOn(catalog, "review").mockResolvedValue(undefined);
   vi.spyOn(chain, "recover").mockResolvedValue({ status: "uncertain", requestId: hash, finalizedBlock: 1 });
   vi.spyOn(chain, "configuration").mockResolvedValue(configuration);
   vi.spyOn(chain, "anchor").mockResolvedValue(configuration.block);
-  vi.spyOn(chain, "policies").mockResolvedValue({ owner: seller, reviewWindow: "86400", responseWindow: "259200", minResponseWindow: "60", minCommitmentWindow: 60, maxCommitmentWindow: 86400, batchLimit: 30, maxBatch: 30, block: configuration.block });
+  vi.spyOn(chain, "policies").mockResolvedValue({ owner: seller, reviewWindow: "86400", responseWindow: "259200", minResponseWindow: "60", minCommitmentWindow: 60, maxCommitmentWindow: 86400, batchLimit: 30, maxBatch: 30, serviceFeeBps: 0, feeTreasury: seller, offerPlacementFee: "0", placementFeeVersion: "1", arbitrationFeeAsset: configuration.terms.token, block: configuration.block });
   return { chain, catalog, configuration, service: new TransactionService(chain, catalog) };
 }
 describe("bounded wallet transactions", () => {

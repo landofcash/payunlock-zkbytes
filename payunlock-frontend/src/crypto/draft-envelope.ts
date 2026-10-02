@@ -3,7 +3,7 @@ import { z } from "zod";
 import { canonical, utf8 } from "./encoding";
 import { encryptWithPassword, decryptWithPassword } from "./password-envelope";
 
-// Strings are supported only for existing passphrase drafts and non-delivery operations.
+// Credentials select password protection or an offer-derived encryption key.
 export type DraftCredential = CryptoKey | string;
 const schema = z.object({ version: z.literal(2), protection: z.literal("offer-key-v1"), iv: z.string(), ciphertext: z.string().max(8_000_000) });
 export const isOfferDraft = (value: unknown) => schema.safeParse(value).success;

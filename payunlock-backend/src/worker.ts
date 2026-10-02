@@ -10,7 +10,7 @@ type Job = { id: string; kind: "purchase" | "arbitration" | "action"; actor: str
 
 async function main() {
   const config = loadConfig();
-  if (!config.RELAYER_PRIVATE_KEY || !config.RELAYER_DAILY_BUDGET_WEI || !config.RELAYER_MAX_FEE_PER_GAS_WEI || !deployment.router) {
+  if (!config.RELAYER_PRIVATE_KEY || !config.RELAYER_DAILY_BUDGET_WEI || !config.RELAYER_MAX_FEE_PER_GAS_WEI) {
     console.info("Relayer is disabled. Configure the V5 deployment and funded worker limits to enable it.");
     return;
   }
@@ -128,9 +128,10 @@ async function main() {
         } else {
           await finish(job.id, "failed", job.transaction_hash, receipt.gasUsed * receipt.gasPrice, "TRANSACTION_REVERTED");
         }
-      } else if (!receipt && Date.now() >= job.expires_at.getTime()) {
-        await pool.query("UPDATE relayer_jobs SET status='uncertain',updated_at=now() WHERE id=$1", [job.id]);
       } else if (!receipt && Date.now() - job.updated_at.getTime() > 30000) {
+        // Expiry prevents the authorized operation, but does not consume the
+        // worker wallet's nonce. Keep rebroadcasting until a canonical receipt
+        // resolves the transaction, including a revert after authorization expiry.
         const attempt = (await pool.query<{ raw_transaction: string | null }>("SELECT raw_transaction FROM relayer_attempts WHERE job_id=$1 AND transaction_hash=$2", [job.id, job.transaction_hash])).rows[0];
         if (attempt?.raw_transaction) {
           try { await provider.broadcastTransaction(attempt.raw_transaction); } catch { /* Already known or temporarily unavailable; reconcile by hash. */ }

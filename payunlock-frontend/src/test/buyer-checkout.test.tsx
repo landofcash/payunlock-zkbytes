@@ -18,7 +18,7 @@ const preview = () => ({ configuration, asset: { symbol: balances.symbol, decima
 function checkout(resumeId?: string) { render(<MemoryRouter><BuyerCheckout product={product} preview={preview()} resumeId={resumeId} /></MemoryRouter>); }
 beforeEach(() => {
   vi.clearAllMocks(); mocks.access.authenticated = true; mocks.session = { address: account };
-  configuration = { chainId: 10143, contract, seller: contract, productKey: hash, expectedTerms: hash, terms: { token: native, price: "1000000000000000", hasEventEnd: false, eventEnd: "0", reviewWindow: "86400", responseWindow: "259200", commitmentWindow: "600" }, sellerReceiving: { nonce: hash, publicKey: hash }, status: 1, allowed: true, block: { number: 1, hash, timestamp: 1 } };
+  configuration = { chainId: 10143, contract, seller: contract, productKey: hash, expectedTerms: hash, terms: { token: native, price: "1000000000000000", hasEventEnd: false, eventEnd: "0", reviewWindow: "86400", responseWindow: "259200", commitmentWindow: "600" }, sellerReceiving: { nonce: hash, publicKey: hash }, authorizationMode: "direct-only", serviceFee: { bps: 0, treasury: contract, sellerCapBps: 0 }, status: 1, allowed: true, block: { number: 1, hash, timestamp: 1 } };
   balances = { token: native, symbol: "MON", decimals: 18, balance: "1000000000000000000", nativeBalance: "1000000000000000000", allowance: "0" };
   mocks.list.mockResolvedValue([]);
   mocks.save.mockImplementation(async (record: Operation) => ({ ...record, version: record.version + 1 }));

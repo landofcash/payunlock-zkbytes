@@ -28,7 +28,6 @@ export class RelayerService {
   constructor(private db: Pool, private chain: ChainService) {}
 
   async enqueue(value: unknown) {
-    if (!deployment.router || !deployment.usdc) throw new ApiError(503, "RELAYER_NOT_DEPLOYED");
     const packet = parse(relayPacketSchema, value);
     if (packet.escrow !== escrowAddress || packet.router !== deployment.router.toLowerCase()) throw new ApiError(409, "WRONG_DEPLOYMENT");
     const now = Math.floor(Date.now() / 1000), after = BigInt(packet.authorization.validAfter), before = BigInt(packet.authorization.validBefore);
@@ -73,7 +72,6 @@ export class RelayerService {
     return { id: job.id, status: job.status, transactionHash: job.transaction_hash, failureReason: job.failure_reason, attempts: job.attempts, createdAt: job.created_at.toISOString() };
   }
   async statusByNonce(actor: string, nonce: string) {
-    if (!deployment.router) throw new ApiError(503, "RELAYER_NOT_DEPLOYED");
     const job = (await this.db.query<JobRow>(`SELECT id,data_hash,status,transaction_hash,failure_reason,attempts,created_at FROM relayer_jobs WHERE chain_id=$1 AND router=$2 AND actor=$3 AND nonce=$4`,
       [deployment.chainId, deployment.router.toLowerCase(), actor, nonce])).rows[0];
     if (!job) throw new ApiError(404, "RELAY_JOB_NOT_FOUND");

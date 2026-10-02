@@ -3,7 +3,7 @@
   "chainId": 143,
   "network": "monadMainnet",
   "status": "not-deployed",
-  "deploymentId": "monad-mainnet-escrow-v1",
+  "deploymentId": "monad-mainnet-payunlock-v5",
   "escrow": null,
   "deploymentBlock": null,
   "paymentAssets": []

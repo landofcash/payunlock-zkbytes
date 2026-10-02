@@ -10,14 +10,14 @@ import { waitFinalized } from "../../payunlock-contract/scripts/finality.js";
 
 if (!process.argv.includes("--send-test-transactions")) throw new Error("Explicit testnet flag required.");
 let stage = "setup";
-const root = new URL("../../output/reservation-v4/", import.meta.url);
+const root = new URL("../../output/reservation-v5/", import.meta.url);
 async function main() {
   await mkdir(root, { recursive: true });
-  const manifest = JSON.parse(await readFile(new URL("../../payunlock-contract/deployments/monad-testnet-payunlock-v4.json", import.meta.url), "utf8"));
+  const manifest = JSON.parse(await readFile(new URL("../../payunlock-contract/deployments/monad-testnet-payunlock-v5.json", import.meta.url), "utf8"));
   const abi = JSON.parse(await readFile(new URL("../../payunlock-contract/abi/PayUnlock.json", import.meta.url), "utf8")).abi;
   const provider = new JsonRpcProvider(process.env.MONAD_TESTNET_RPC_URL, 10143, { staticNetwork: true, cacheTimeout: -1 });
   const wallet = new Wallet(process.env.MONAD_TESTNET_DEPLOYER_KEY!, provider), c = new Contract(manifest.escrow, abi, wallet);
-  const buyer = new Wallet(keccak256(new TextEncoder().encode("payunlock-v4-acceptance:" + process.env.MONAD_TESTNET_DEPLOYER_KEY!)), provider);
+  const buyer = new Wallet(keccak256(new TextEncoder().encode("payunlock-v5-acceptance:" + process.env.MONAD_TESTNET_DEPLOYER_KEY!)), provider);
   const deployment = { chainId: 10143 as const, contract: manifest.escrow.toLowerCase() };
   type Report = { contract: string; offerId: string; buyerNonce: string; request: string; steps: Record<string, { hash: string; block: number }>; orderId?: string; endBlock?: number; passed?: boolean };
   const file = new URL("acceptance.json", root);
@@ -41,7 +41,6 @@ async function main() {
     assert.equal((await provider.getNetwork()).chainId, 10143n);
     // Preserve the user-facing token choices on the fresh deployment.
     await send("enable-usdc", "setAllowedAsset", ["0x534b2f3a21130d7a60830c2df862319e593943a3", true]);
-    await send("hide-fixture-token", "setAllowedAsset", [manifest.testToken, false]);
     if (!report.steps["fund-buyer"]) {
       stage = "fund-buyer";
       const tx = await wallet.sendTransaction({ to: buyer.address, value: parseEther("0.05") });
@@ -54,7 +53,8 @@ async function main() {
     const sellerKeys = await restoreReceivingKeys(sellerContext, wallet, () => true), buyerKeys = await restoreReceivingKeys(buyerContext, buyer, () => true);
     try {
       const productKey = id(report.offerId), price = 1000000000n;
-      await send("create", "createProduct", [productKey, { token: ZeroAddress, price, hasEventEnd: false, eventEnd: 0, hasReviewOverride: false, reviewOverride: 0, commitmentWindow: 600 }, { nonce: sellerContext.nonce, publicKey: hexlify(sellerKeys.encryptionPublicKey) }]);
+      const feeCapBps = await c.getFunction("serviceFeeBps")(), placementFee = await c.getFunction("offerPlacementFee")(), feeVersion = await c.getFunction("placementFeeVersion")();
+      await send("create", "createProduct", [productKey, { token: ZeroAddress, price, hasEventEnd: false, eventEnd: 0, hasReviewOverride: false, reviewOverride: 0, commitmentWindow: 600 }, { nonce: sellerContext.nonce, publicKey: hexlify(sellerKeys.encryptionPublicKey) }, feeCapBps, placementFee, feeVersion], placementFee);
       await send("purchase", "purchase", [wallet.address, productKey, report.request, await c.getFunction("checkoutHash")(wallet.address, productKey), { nonce: buyerContext.nonce, publicKey: hexlify(buyerKeys.encryptionPublicKey) }], price);
       const orderId = String(await c.getFunction("orderForRequest")(buyer.address, report.request)); report.orderId = orderId; await save();
       let snapshot = await c.getFunction("getOrder")(orderId);

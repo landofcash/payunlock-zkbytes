@@ -59,7 +59,7 @@ it("prepares 30 separate orders with one offer signature, restores seller access
   } finally { clearItemKeys(keys); identities.forEach(b => b.privateKey.fill(0)); }
 }, 20000);
 
-it("binds offer restoration to the seller, deployment and offer ID while preserving legacy receiving contexts", async () => {
+it("binds offer restoration to the seller, deployment and offer ID", async () => {
   const seller = Wallet.createRandom();
   const context = newOfferReceivingContext(deployment, seller.address, offerId);
   expect(context.nonce).toBe(`0x${offerId.replaceAll("-", "").padStart(64, "0")}`);
@@ -69,10 +69,5 @@ it("binds offer restoration to the seller, deployment and offer ID while preserv
     await expect(restoreReceivingKeys({ ...context, nonce: `0x${"34".repeat(32)}` }, seller, current, publicKey)).rejects.toThrow("does not match");
     await expect(restoreReceivingKeys({ ...context, deployment: { ...deployment, contract: `0x${"56".repeat(20)}` } }, seller, current, publicKey)).rejects.toThrow("does not match");
     await expect(restoreReceivingKeys(context, Wallet.createRandom(), current, publicKey)).rejects.toThrow("Wrong receiving");
-    const legacy = newReceivingContext(deployment, seller.address);
-    const a = await restoreReceiving(legacy, seller, current);
-    const b = await restoreReceivingKeys(legacy, seller, current, a.publicKey);
-    try { expect(b.encryptionPrivateKey).toEqual(a.privateKey); }
-    finally { a.privateKey.fill(0); clearItemKeys(b); }
   } finally { clearItemKeys(first); }
 });

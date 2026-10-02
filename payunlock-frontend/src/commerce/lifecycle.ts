@@ -28,7 +28,7 @@ export type LifecycleAction =
   | { kind: "setAllowedAsset"; asset: string; allowed: boolean }
   | { kind: "addStorageService"; serviceId: number }
   | { kind: "setTimingBounds"; responseFloor: string; commitmentFloor: number; commitmentCeiling: number }
-  | { kind: "configureArbitrator"; wallet: string; publicKey: string; fee: string; active: boolean }
+  | { kind: "configureArbitrator"; wallet: string; publicKey: string; active: boolean }
   | { kind: "setMyArbitrationFee"; expectedVersion: string; fee: string }
   | { kind: "setServiceFee"; bps: number; treasury: string }
   | { kind: "setOfferPlacementFee"; amount: string }

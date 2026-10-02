@@ -19,7 +19,7 @@ beforeEach(() => {
   mocks.read.mockReset().mockImplementation(async (path: string) => path.startsWith('/public/orders/') ? view : path === '/deployment' ? { chainId: 10143, contract: '0x3333333333333333333333333333333333333333' } : path === '/arbitrators' ? { items: [], nextCursor: null } : path === '/storage-services' ? { items: [{ id: 1, label: 'zkbytes' }] } : {});
   mocks.request.mockReset().mockImplementation(async (path: string) => path === '/orders/7' ? view : path.endsWith('/records') ? { items: mocks.rows, nextCursor: null } : path.endsWith('/history') ? { items: [{ id: 'event', name: 'Purchased', blockNumber: '40', transactionHash: '0xtx', timestamp: 90 }], nextCursor: null } : { items: [], nextCursor: null });
 });
-function orderTree(path = mocks.address === seller ? "/sales/orders/7" : "/purchases/7") { return <MemoryRouter initialEntries={[path]}><Routes><Route path="/orders/:id" element={<OrderPage />} /><Route path="/purchases/:id" element={<OrderPage role="buyer" />} /><Route path="/sales/orders/:id" element={<OrderPage role="seller" />} /><Route path="/arbitration/:id" element={<OrderPage role="arbitrator" />} /></Routes></MemoryRouter>; }
+function orderTree(path = mocks.address === seller ? "/sales/orders/7" : "/purchases/7") { return <MemoryRouter initialEntries={[path]}><Routes><Route path="/purchases/:id" element={<OrderPage role="buyer" />} /><Route path="/sales/orders/:id" element={<OrderPage role="seller" />} /><Route path="/arbitration/:id" element={<OrderPage role="arbitrator" />} /></Routes></MemoryRouter>; }
 function mount(path?: string) { return render(orderTree(path)); }
 it.each([false, true])('keeps the order summary mounted during refresh when authenticated is %s', async authenticated => {
   mocks.authenticated = authenticated;
@@ -230,7 +230,7 @@ it('opens seller delivery transaction review in a dialog after preparing content
   const composer = screen.getByRole('dialog', { name: 'Prepare delivery' });
   fireEvent.change(within(composer).getByLabelText('Delivery content'), { target: { value: 'Access code: ABC' } });
   fireEvent.click(within(composer).getByRole('button', { name: 'Review content' }));
-  fireEvent.click(within(composer).getByRole('button', { name: 'Send delivery' }));
+  fireEvent.click(await within(composer).findByRole('button', { name: 'Send delivery' }));
   const review = await screen.findByRole('dialog', { name: 'Delivery processing' });
   expect(within(review).getByText('Maximum network fee')).toBeInTheDocument();
   expect(within(review).getByRole('button', { name: 'Confirm delivery' })).toBeInTheDocument();
@@ -324,7 +324,7 @@ it('shows a refund before sign-in and resumes its review after fresh eligibility
   fireEvent.click(refund); expect(mocks.authorize).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('dialog', { name: 'Claim refund' })).not.toBeInTheDocument();
   mocks.authenticated = true;
-  result.rerender(<MemoryRouter initialEntries={['/orders/7']}><Routes><Route path="/orders/:id" element={<OrderPage />} /><Route path="/purchases/:id" element={<OrderPage role="buyer" />} /><Route path="/sales/orders/:id" element={<OrderPage role="seller" />} /><Route path="/arbitration/:id" element={<OrderPage role="arbitrator" />} /></Routes></MemoryRouter>);
+  result.rerender(orderTree('/purchases/7'));
   expect(await screen.findByRole('dialog', { name: 'Claim refund' })).toHaveTextContent('Return the full order payment to the buyer');
   expect(mocks.request).toHaveBeenCalledWith('/orders/7');
   expect(mocks.request.mock.calls.some(([path]) => path === '/transactions/prepare')).toBe(false);
@@ -390,7 +390,7 @@ it('does not continue a refund when eligibility changed while signing in', async
   mocks.authenticated = false; view.order.state = 1; view.eligibility = { claimRefund: true };
   const result = mount(); fireEvent.click(await screen.findByRole('button', { name: 'Claim refund' }));
   view = { ...view, eligibility: {}, order: { ...view.order, state: 2, publicationDeadline: '500' } }; mocks.authenticated = true;
-  result.rerender(<MemoryRouter initialEntries={['/orders/7']}><Routes><Route path="/orders/:id" element={<OrderPage />} /><Route path="/purchases/:id" element={<OrderPage role="buyer" />} /><Route path="/sales/orders/:id" element={<OrderPage role="seller" />} /><Route path="/arbitration/:id" element={<OrderPage role="arbitrator" />} /></Routes></MemoryRouter>);
+  result.rerender(orderTree('/purchases/7'));
   expect(await screen.findByText('A refund is no longer available. The order status has changed.')).toBeInTheDocument();
   expect(screen.queryByRole('dialog', { name: 'Claim refund' })).not.toBeInTheDocument();
   expect(mocks.request.mock.calls.some(([path]) => path === '/transactions/prepare')).toBe(false);
@@ -405,13 +405,6 @@ it('uses finalized time and cancellation to determine public refund availability
   order.order.state = 6; expect(publicRefundAction(order)).toBeUndefined();
 });
 
-it('redirects legacy links to the buyer view without signing', async () => {
-  mocks.authenticated = false; mount('/orders/7');
-  expect(await screen.findByRole('heading', { name: 'Private workshop' })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Back to purchases' })).toHaveAttribute('href', '/purchases');
-  expect(mocks.request).not.toHaveBeenCalled();
-  expect(mocks.authorize).not.toHaveBeenCalled();
-});
 it('redirects a seller on a buyer URL to the fulfillment workspace', async () => {
   mocks.address = seller; view.order.state = 1; view.eligibility = {}; mount('/purchases/7');
   expect(await screen.findByRole('heading', { name: 'Delivery progress' })).toBeInTheDocument();

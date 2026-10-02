@@ -1,2 +1,2 @@
-console.error("Mainnet escrow deployment is not available in Phase 1. The Foundation module contains a test-only token. Add the reviewed Phase 3 escrow module and a distinct mainnet deployment identity after acceptance.");
+console.error("PayUnlock V5 currently supports Monad Testnet and local EVM only. Mainnet requires a separately reviewed deployment and verified payment assets.");
 process.exitCode = 1;

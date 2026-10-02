@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { z } from "zod";
 import { ApiError, json, productInput, type Order, type Receiving } from "../domain.js";
-import { checkoutHashForOrder, deploymentKey, deployment, escrowAddress, type CheckoutConfiguration } from "../services/chain-service.js";
+import { deploymentKey, deployment, escrowAddress, type CheckoutConfiguration } from "../services/chain-service.js";
 
 import { imageDescriptor, type OfferImage } from "../services/offer-images.js";
 type ProductInput = z.infer<typeof productInput>;
@@ -84,10 +84,11 @@ export class CatalogRepository {
     await this.recordReview(intent.id, intent.revision, intent.configuration);
     return intent;
   }
-  async associate(orderId: string, order: Order) {
+  async associate(orderId: string, order: Order, purchaseCommitment: () => Promise<string | null>) {
     const intent = await this.intent(order.buyer, order.requestId);
     if (!intent || intent.buyer_receiving.nonce !== order.buyerReceiving.nonce || intent.buyer_receiving.publicKey !== order.buyerReceiving.publicKey) return;
-    const expected = checkoutHashForOrder(order);
+    const expected = await purchaseCommitment();
+    if (!expected) return;
     const review = await this.review(intent.id, expected);
     const revision = review?.revision ?? (intent.expected_terms === expected ? intent.revision : undefined);
     if (!revision) return;

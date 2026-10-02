@@ -7,7 +7,7 @@ import { unlockWallet } from "@/wallet/managed-session";
 const password = "correct horse battery staple", replacement = "a different long passphrase";
 const key = `0x${"0".repeat(63)}1`;
 const fixture = () => { const store = new IndexedStore(`wallet-management-${crypto.randomUUID()}`); return { store, vault: new WalletVault(store) }; };
-it("lists legacy address records and switches between private-key and mnemonic accounts", async () => {
+it("lists saved address records and switches between private-key and mnemonic accounts", async () => {
   const { vault } = fixture(), first = await vault.import(key, password), second = await vault.create(password);
   expect(await vault.list()).toEqual([first, second].sort());
   expect((await vault.export(first, password)).mnemonic).toBeNull();

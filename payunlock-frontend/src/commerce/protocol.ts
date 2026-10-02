@@ -30,8 +30,7 @@ export const RETENTION_SECONDS = 365 * 24 * 60 * 60;
 export function newReceivingContext(deployment: Order["deployment"], account: string): ReceivingContext {
   return ReceivingContextSchema.parse({ version: 1, deployment, account: account.toLowerCase(), nonce: `0x${Array.from(randomBytes(32), x => x.toString(16).padStart(2, "0")).join("")}` });
 }
-// The catalog UUID is encoded in the existing nonce field. Purchased contexts
-// remain byte-for-byte compatible with the contract codec and legacy offers.
+// Encode the catalog UUID in the contract's receiving nonce field.
 export function newOfferReceivingContext(deployment: Order["deployment"], account: string, offerId: string): ReceivingContext {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(offerId)) throw new Error("Invalid offer ID.");
   return ReceivingContextSchema.parse({ version: 1, deployment, account: account.toLowerCase(), nonce: `0x${offerId.replaceAll("-", "").toLowerCase().padStart(64, "0")}` });

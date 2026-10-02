@@ -136,7 +136,7 @@ it("routes price changes through transaction review and keeps current terms in t
   fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
   fireEvent.click(screen.getByRole("button", { name: "Review transaction" }));
   expect(await screen.findByRole("heading", { name: "Update offer" })).toBeInTheDocument();
-  expect(screen.getByRole("dialog", { name: "Update offer" })).toHaveTextContent("Simulate confirmation");
+  expect(await screen.findByRole("dialog", { name: "Update offer" })).toHaveTextContent("Simulate confirmation");
   expect(mocks.prepare).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ kind: "update" }));
   fireEvent.click(screen.getByRole("button", { name: "Back to offer" }));
   expect(screen.getByText(/Saved changes have not been applied/)).toBeInTheDocument();

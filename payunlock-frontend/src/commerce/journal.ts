@@ -17,7 +17,7 @@ function validate(value: unknown): Pending {
   if (recordHash(record.record) !== record.recordHash || contentHash(record.opening) !== record.record.contentHash || canonical(record.record.order) !== canonical(record.opening.order) || canonical(record.item.creator) !== canonical(record.record.creator) || record.item.expiresAt !== record.record.expiresAt || record.item.managers.length) throw new Error("Recovery record integrity check failed.");
   return record;
 }
-// New deliveries use the seller's offer-derived draft key. Legacy drafts remain readable.
+// Encrypt recovery drafts with the supplied credential and verify their commitments.
 export class FulfillmentJournal {
   constructor(private readonly store: LocalStore) {}
   async prepare(prepared: PreparedDelivery, password: DraftCredential, isCurrent: () => boolean) {

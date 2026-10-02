@@ -8,7 +8,7 @@ import { CommerceProvider, ProtectedAccess } from "./commerce/client";
 import { ApprovalProvider } from "./wallet/ApprovalProvider";
 import { Catalog, ProductPage } from "./commerce/Catalog";
 import { SellerEditor } from "./commerce/Seller";
-import { Orders, OrderPage, BuyerOrderPage, SellerOrderPage, ArbitratorOrderPage } from "./commerce/Orders";
+import { Orders, BuyerOrderPage, SellerOrderPage, ArbitratorOrderPage } from "./commerce/Orders";
 import { BulkDelivery } from "./commerce/BulkDelivery";
 import { MyOffers } from "./commerce/MyOffers";
 import { Platform } from "./commerce/Platform";
@@ -59,7 +59,6 @@ function AppShell({ apiOrigin, walletsEnabled }: { apiOrigin: string; walletsEna
       <Route path="/purchases/:id" element={<BuyerOrderPage />} />
       <Route path="/sales/orders/:id" element={<SellerOrderPage />} />
       <Route path="/arbitration/:id" element={<ArbitratorOrderPage />} />
-      <Route path="/orders/:id" element={<OrderPage />} />
       <Route path="/wallet" element={walletsEnabled ? <Navigate to="/?wallet=open" replace /> : <EmptyPage title="Wallet unavailable" description="Wallets are not enabled in this environment." />} />
       <Route path="*" element={<EmptyPage title="Page not found" description="Use Discover to return to the home page." />} />
     </Routes></main>

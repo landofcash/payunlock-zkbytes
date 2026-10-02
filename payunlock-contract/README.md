@@ -1,6 +1,6 @@
 # Contract foundation
 
-Phase 1 proves compilation, OpenZeppelin imports, local EVM testing, initialization, and ABI export. `FoundationProbe` is not escrow. `TestPaymentToken` is PayUnlock Test USD (`TESTUSD`, six decimals), deployable only on local chain 31337 or Monad Testnet 10143. It is not USDC.
+PayUnlock supports V5 only. The application uses the current escrow ABI and `deployments/monad-testnet-payunlock-v5.json`; V1–V4 deployments and their compatibility paths have been removed.
 
 From the repository root:
 
@@ -10,27 +10,27 @@ pnpm contract:test
 pnpm contract:deploy:local
 ```
 
-The local command uses a temporary EVM and `local-foundation`; it does not start a persistent node or provide application addresses. Tests use independent temporary connections.
+The local command deploys the V5 escrow and authorization router with a mock USDC receive-authorization token on a temporary EVM. It does not start a persistent node or provide public-network application addresses. Tests use independent temporary connections.
 
 ## Ignition and public networks
 
-`ignition/modules/Foundation.ts` defines constructor initialization. Parameters are in `ignition/parameters/`. The empty mainnet parameters reserve configuration space, not a deployable escrow. Environments have separate config variables/deployment IDs.
+`ignition/modules/PayUnlock.ts` defines V5 initialization. Local parameters are in `ignition/parameters/payunlock-local.json`; `scripts/local.ts` supplies the locally deployed mock token. The testnet script supplies the verified Circle testnet USDC address.
 
-For an intentional later **test scaffold** deployment, configure `MONAD_TESTNET_RPC_URL` and `MONAD_TESTNET_DEPLOYER_KEY` using Hardhat keystore or process environment. Hardhat does not load root `.env`; deployment secrets stay separate. From `payunlock-contract/`:
+For an intentional testnet deployment, configure `MONAD_TESTNET_RPC_URL` and `MONAD_TESTNET_DEPLOYER_KEY` locally. The testnet package commands load the ignored root `.env`. Hardhat also supports its keystore; from `payunlock-contract/`:
 
 ```sh
 pnpm exec hardhat keystore set MONAD_TESTNET_RPC_URL
 pnpm exec hardhat keystore set MONAD_TESTNET_DEPLOYER_KEY
 ```
 
-Then `pnpm contract:deploy:testnet` from the root uses a dedicated funded test wallet. No public deployment is required by Phase 1; actual escrow belongs to Phase 3.
+`pnpm contract:preflight:testnet` checks the configured deployer and network. `pnpm contract:deploy:testnet` deploys or resumes V5 with that funded test wallet. `pnpm contract:check:testnet` verifies the finalized deployment and configuration.
 
-Retain `ignition/deployments/monad-testnet-foundation-v1/` with the release, including journal/build info/addresses. Resume the same module, parameters, network, and ID after interruption. Never delete journals to force redeployment or pretend to upgrade a contract. Never include private keys/private RPC credentials in records.
+Retain `ignition/deployments/monad-testnet-payunlock-v5/` with the release, including journal/build info/addresses. Resume the same module, parameters, network, and ID after interruption. Never delete the active journal to force redeployment. Never include private keys/private RPC credentials in records.
 
-Update `deployments/monad-testnet.json` from confirmed evidence only: addresses, deployment block, ABI/revision identity, configuration authority, and token decimals. Null means not deployed. Mainnet reserves `monad-mainnet-escrow-v1`, with separately verified assets after acceptance.
+Update `deployments/monad-testnet-payunlock-v5.json` from confirmed evidence only. Mainnet deployment remains disabled pending separate review and verified payment assets.
 
 ## ABI ownership
 
-`pnpm contract:build` exports `{ contractName, abi }` JSON to tracked `abi/`. Consumers import `@payunlock/contract/abi/FoundationProbe` (or the future escrow), not hand-copied fragments. Full artifacts/ethers types regenerate; CI checks tracked ABI drift.
+`pnpm contract:build` exports the current PayUnlock, codec, and authorization-router ABIs to tracked `abi/`. Consumers use these ABIs. Full artifacts and ethers types regenerate; CI checks tracked ABI drift.
 
-Explicit `osaka` follows the Monad guide. Local tests do not prove deployed Monad behavior, gas, finality, or escrow correctness. Guard/admin/upgrade policy remains a Phase 3 decision.
+Explicit `osaka` follows the Monad guide. Local tests do not prove deployed Monad behavior, gas, or finality. Public-network acceptance is recorded separately.

@@ -13,7 +13,6 @@ import {
   serializeReceiveCard,
   type ReceiveCard,
 } from "./receive-card";
-import { openSealedSeed as openLegacySeed } from "./sealed-seed-v2";
 
 export const SEALED_SEED_FRAGMENT_LENGTH = 87;
 export const SEALED_SEED_WITH_KEY_LENGTH = 131;
@@ -100,9 +99,6 @@ export async function openSealedSeed(
 ): Promise<string> {
   try {
     const value = fragment.startsWith("#") ? fragment.slice(1) : fragment;
-    // Preserve opening of previously exported Base32 v2 links.
-    if (/^[a-z2-7]{52}-[a-z2-7]{242}$/u.test(value))
-      return await openLegacySeed(value, privateKey);
     const envelope = parseSealedSeedFragment(value);
     if (
       envelope.recipientPublicKey &&

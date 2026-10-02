@@ -77,6 +77,12 @@ export class IndexerService {
     })) }));
     return result.ChainEvent.map(row => ({ ...row, data: JSON.parse(row.data) as unknown }));
   }
+  async purchaseTransaction(orderId: string): Promise<string | null> {
+    const result = await this.query(`query($order:String!){
+      ChainEvent(where:{order:{_eq:$order},name:{_eq:"Purchased"}},limit:1){transactionHash}
+    }`, { order: `${deploymentKey}:${orderId}` }, z.object({ ChainEvent: z.array(z.object({ transactionHash: z.string().regex(/^0x[0-9a-f]{64}$/) })) }));
+    return result.ChainEvent[0]?.transactionHash ?? null;
+  }
   async evidence(orderId: string, after: string, limit: number, requests = false): Promise<Record<string, unknown>[]> {
     const entity = requests ? "ChainEvidenceRequest" : "ChainEvidence";
     const fields = requests ? "id index revision participant commitment data assignment advisoryDate" : "id index revision submitter commitment data";

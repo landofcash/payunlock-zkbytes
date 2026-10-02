@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { ApiError, type ChainSnapshot } from "../src/domain.js";
-import { ChainService, checkoutHashForOrder, deployment, deploymentKey, escrowAddress, escrowInterface } from "../src/services/chain-service.js";
+import { ChainService, deployment, deploymentKey, escrowAddress, escrowInterface } from "../src/services/chain-service.js";
 import { IndexerService } from "../src/services/indexer-service.js";
 
 const origin = "http://127.0.0.1:4320";
@@ -42,11 +42,13 @@ describe.skipIf(process.env.PAYUNLOCK_DB_TEST !== "1")("commerce API with isolat
     url.searchParams.set("options", `-csearch_path=${schema}`);
     const config = loadConfig({ ...process.env, DATABASE_URL: url.toString(), LOG_LEVEL: "silent" });
     vi.spyOn(chain, "isEOA").mockResolvedValue(true);
+    vi.spyOn(indexer, "purchaseTransaction").mockResolvedValue(key);
+    vi.spyOn(chain, "purchaseCheckoutHash").mockResolvedValue(requestId);
     vi.spyOn(chain, "anchor").mockResolvedValue(snapshot.block);
     vi.spyOn(chain, "order").mockImplementation(async () => structuredClone(snapshot));
     vi.spyOn(chain, "orders").mockImplementation(async ids => ids.map(() => structuredClone(snapshot)));
     vi.spyOn(chain, "configuration").mockResolvedValue({ chainId: 10143, contract: escrowAddress, seller: seller.address.toLowerCase(), productKey: key,
-      expectedTerms: checkoutHashForOrder(snapshot.order), terms: snapshot.order.terms, sellerReceiving: receiving, status: 1, allowed: true, block: snapshot.block });
+      expectedTerms: requestId, terms: snapshot.order.terms, sellerReceiving: receiving, status: 1, allowed: true, block: snapshot.block, authorizationMode: "direct-only", serviceFee: { bps: 0, treasury: seller.address.toLowerCase(), sellerCapBps: 0 } });
     vi.spyOn(chain, "recover").mockResolvedValue({ status: "finalized", orderId: "1", snapshot });
     vi.spyOn(indexer, "orders").mockResolvedValue(["1"]);
     app = buildApp(config, { chain, indexer });
@@ -241,7 +243,7 @@ describe.skipIf(process.env.PAYUNLOCK_DB_TEST !== "1")("commerce API with isolat
     expect(prepared.statusCode).toBe(200);
     const original = prepared.json().configuration;
     const nextOrder = { ...snapshot.order, requestId: nextRequest, terms: { ...snapshot.order.terms, reviewWindow: "0" } };
-    const changed = { ...original, expectedTerms: checkoutHashForOrder(nextOrder), terms: nextOrder.terms };
+    const changed = { ...original, expectedTerms: nextRequest, terms: nextOrder.terms };
     vi.mocked(chain.recover).mockResolvedValueOnce({ status: "uncertain", requestId: nextRequest, finalizedBlock: 100 });
     vi.mocked(chain.configuration).mockResolvedValueOnce(changed);
     const refreshed = await app.inject({ method: "POST", url: `/v1/products/${productId}/checkout/refresh`, headers: buyerAuth, payload: { requestId: nextRequest } });

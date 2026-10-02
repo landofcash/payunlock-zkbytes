@@ -6,6 +6,10 @@ import { HealthService } from "../src/services/health-service.js";
 const env = { DATABASE_URL: "postgresql://test:test@127.0.0.1:1/test", API_ORIGINS: "http://127.0.0.1:4320", MONAD_TESTNET_RPC_URL: "https://testnet-rpc.monad.xyz", CHAIN_ID: "10143", ALLOWED_CHAIN_IDS: "10143", ALLOWED_PAYMENT_ASSETS: "0x0000000000000000000000000000000000000000", ZKBYTES_SERVICE_URL: "https://storage.example.invalid", ZKBYTES_PROFILE: "zkbytes-wallet-eip191-hkdfsha256-ed25519-x25519-hpke-v1", LOG_LEVEL: "silent" };
 
 describe("foundation API", () => {
+  it("defaults to V5 and rejects older deployment versions", () => {
+    expect(loadConfig(env).PAYUNLOCK_DEPLOYMENT_VERSION).toBe("v5");
+    expect(() => loadConfig({ ...env, PAYUNLOCK_DEPLOYMENT_VERSION: "v4" })).toThrow("Invalid configuration");
+  });
   it("allows browser preflights for commerce writes only from configured origins", async () => {
     const origins = ["http://127.0.0.1:4320", "http://localhost:4320"];
     const app = buildApp(loadConfig({ ...env, API_ORIGINS: origins.join(",") }));

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ApiError, address, hash, nonzeroHash, orderId, uint } from "../domain.js";
-import { ChainService, deployment, escrowInterface, eligibility } from "./chain-service.js";
+import { ChainService, escrowInterface, eligibility } from "./chain-service.js";
 
 const u64 = uint.refine(v => BigInt(v) < 2n ** 64n);
 const envelope = z.string().regex(/^0x03[0-9a-fA-F]{128}$/);
@@ -16,7 +16,7 @@ export const lifecycleSchemas = [
   z.strictObject({ kind: z.literal("publishDelivery"), orderId, reference: referenceSchema, reservationTransaction: hash }),
   z.strictObject({ kind: z.literal("openDispute"), orderId, reference: referenceSchema }),
   z.strictObject({ kind: z.literal("replyToDispute"), orderId, expectedTurn: uint, reference: referenceSchema }),
-  z.strictObject({ kind: z.literal("requestArbitration"), orderId, wallet: address, expectedKeyVersion: u64, expectedFee: uint, expectedFeeVersion: u64.optional(), expectedFeeAsset: address.optional(), evidence }),
+  z.strictObject({ kind: z.literal("requestArbitration"), orderId, wallet: address, expectedKeyVersion: u64, expectedFee: uint, expectedFeeVersion: u64, expectedFeeAsset: address, evidence }),
   z.strictObject({ kind: z.literal("submitArbitrationEvidence"), orderId, revision: u64, evidence }),
   z.strictObject({ kind: z.literal("requestArbitrationEvidence"), orderId, revision: u64, participant: address, expectedIndex: uint, request: evidence, advisoryDate: u64 }),
   z.strictObject({ kind: z.literal("resolveArbitration"), orderId, revision: u64, sellerWins: z.boolean() }),
@@ -27,7 +27,7 @@ export const lifecycleSchemas = [
   z.strictObject({ kind: z.literal("setBatchLimit"), value: u64 }),
   z.strictObject({ kind: z.literal("addStorageService"), serviceId: z.number().int().min(1).max(4294967295) }),
   z.strictObject({ kind: z.literal("setTimingBounds"), responseFloor: u64, commitmentFloor: z.number().int().min(1).max(4294967295), commitmentCeiling: z.number().int().min(1).max(4294967295) }),
-  z.strictObject({ kind: z.literal("configureArbitrator"), wallet: address, publicKey: nonzeroHash, fee: uint.optional(), active: z.boolean() }),
+  z.strictObject({ kind: z.literal("configureArbitrator"), wallet: address, publicKey: nonzeroHash, active: z.boolean() }),
   z.strictObject({ kind: z.literal("setMyArbitrationFee"), expectedVersion: u64, fee: uint }),
   z.strictObject({ kind: z.literal("setServiceFee"), bps: z.number().int().min(0).max(10000), treasury: address }),
   z.strictObject({ kind: z.literal("setOfferPlacementFee"), amount: uint }),
@@ -42,7 +42,8 @@ export async function lifecycleRequest(chain: ChainService, wallet: string, acti
   const block = await chain.anchor("latest");
   const require = (ok: boolean) => { if (!ok) throw new ApiError(409, "ACTION_NOT_AVAILABLE"); };
   const admin = async () => { require(String((await chain.call("owner", [], block))[0]).toLowerCase() === wallet); };
-  let args: unknown[], value = "0";
+  let args: unknown[];
+  const value = "0";
   if (action.kind === "cancelProduct") {
     const product = (await chain.call("getProduct", [wallet, action.productKey], block))[0];
     require([1, 2].includes(Number(product.status))); args = [action.productKey];
@@ -61,25 +62,22 @@ export async function lifecycleRequest(chain: ChainService, wallet: string, acti
   else if (action.kind === "setAllowedAsset") { await admin(); args = [action.asset, action.allowed]; }
   else if (action.kind === "addStorageService") { await admin(); args = [action.serviceId]; }
   else if (action.kind === "setTimingBounds") { await admin(); args = [action.responseFloor, action.commitmentFloor, action.commitmentCeiling]; }
-  else if (action.kind === "configureArbitrator") { await admin(); args = deployment.router ? [action.wallet, action.publicKey, action.active] : [action.wallet, action.publicKey, action.fee ?? "0", action.active]; }
+  else if (action.kind === "configureArbitrator") { await admin(); args = [action.wallet, action.publicKey, action.active]; }
   else if (action.kind === "setMyArbitrationFee") {
-    require(!!deployment.router);
     const active = (await chain.call("arbitrators", [wallet], block))[0];
     const version = (await chain.call("arbitratorFeeVersion", [wallet], block))[0];
     require(Boolean(active) && BigInt(version) === BigInt(action.expectedVersion));
     args = [action.expectedVersion, action.fee];
   }
-  else if (action.kind === "setServiceFee") { await admin(); require(!!deployment.router); args = [action.bps, action.treasury]; }
-  else if (action.kind === "setOfferPlacementFee") { await admin(); require(!!deployment.router); args = [action.amount]; }
-  else if (action.kind === "setArbitrationFeeAsset") { await admin(); require(!!deployment.router); args = [action.asset]; }
-  else if (action.kind === "setReceiveAuthorizationAsset") { await admin(); require(!!deployment.router); args = [action.asset, action.enabled]; }
+  else if (action.kind === "setServiceFee") { await admin(); args = [action.bps, action.treasury]; }
+  else if (action.kind === "setOfferPlacementFee") { await admin(); args = [action.amount]; }
+  else if (action.kind === "setArbitrationFeeAsset") { await admin(); args = [action.asset]; }
+  else if (action.kind === "setReceiveAuthorizationAsset") { await admin(); args = [action.asset, action.enabled]; }
   else if (action.kind === "setSellerFeeCap") {
-    require(!!deployment.router);
     await chain.call("getProduct", [wallet, action.productKey], block);
     args = [action.productKey, action.capBps];
   }
   else if (action.kind === "claimFees") {
-    require(!!deployment.router);
     require(BigInt((await chain.call("accruedFees", [wallet, action.asset], block))[0]) > 0n);
     args = [action.asset];
   }
@@ -97,15 +95,10 @@ export async function lifecycleRequest(chain: ChainService, wallet: string, acti
       case "confirmReceipt": case "refundDisputedOrder": require(e[action.kind]); args = [action.orderId]; break;
       case "requestArbitration": {
         require(e.requestArbitration);
-        if (deployment.router) {
-          const asset = String((await chain.call("arbitrationFeeAsset", [], block))[0]).toLowerCase();
-          const version = String((await chain.call("arbitratorFeeVersion", [action.wallet], block))[0]);
-          require(action.expectedFeeAsset === asset && action.expectedFeeVersion === version);
-          value = "0";
-        } else value = action.expectedFee;
-        args = deployment.router
-          ? [action.orderId, action.wallet, action.expectedKeyVersion, action.expectedFeeVersion, action.expectedFee, action.expectedFeeAsset, action.evidence]
-          : [action.orderId, action.wallet, action.expectedKeyVersion, action.expectedFee, action.evidence]; break;
+        const asset = String((await chain.call("arbitrationFeeAsset", [], block))[0]).toLowerCase();
+        const version = String((await chain.call("arbitratorFeeVersion", [action.wallet], block))[0]);
+        require(action.expectedFeeAsset === asset && action.expectedFeeVersion === version);
+        args = [action.orderId, action.wallet, action.expectedKeyVersion, action.expectedFeeVersion, action.expectedFee, action.expectedFeeAsset, action.evidence]; break;
       }
       case "submitArbitrationEvidence": require([o.buyer, o.seller].includes(wallet)); args = [action.orderId, action.revision, action.evidence]; break;
       case "requestArbitrationEvidence": require(e.resolveArbitration); args = [action.orderId, action.revision, action.expectedIndex, action.participant, action.advisoryDate, action.request]; break;

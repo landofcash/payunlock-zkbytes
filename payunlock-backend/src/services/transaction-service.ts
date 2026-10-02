@@ -31,7 +31,7 @@ export class TransactionService {
         const policies = await this.chain.policies("latest");
         if (t.commitmentWindow < policies.minCommitmentWindow || t.commitmentWindow > policies.maxCommitmentWindow) throw new ApiError(409, "PUBLICATION_BOUNDS_CHANGED_UPDATE_OFFER");
         const args: unknown[] = [m.product_key, { token: t.token, price: t.price, hasEventEnd: t.eventEnd !== null, eventEnd: t.eventEnd ?? "0", hasReviewOverride: t.reviewWindow !== null, reviewOverride: t.reviewWindow ?? "0", commitmentWindow: t.commitmentWindow }, action.receiving];
-        if (action.kind === "create" && deployment.router) {
+        if (action.kind === "create") {
           if (action.feeCapBps === undefined || action.expectedPlacementFee === undefined || action.expectedFeeVersion === undefined || action.feeCapBps < policies.serviceFeeBps!) throw new ApiError(409, "FEE_REVIEW_REQUIRED");
           if (action.expectedPlacementFee !== policies.offerPlacementFee || action.expectedFeeVersion !== policies.placementFeeVersion) throw new ApiError(409, "PLACEMENT_FEE_CHANGED");
           args.push(action.feeCapBps, action.expectedPlacementFee, action.expectedFeeVersion);
@@ -40,7 +40,6 @@ export class TransactionService {
         data = escrowInterface.encodeFunctionData(action.kind === "create" ? "createProduct" : "updateProduct", args);
       }
     } else if (action.kind === "approveArbitrationFee") {
-      if (!deployment.router) throw new ApiError(409, "ACTION_NOT_AVAILABLE");
       const block = await this.chain.anchor("latest");
       const snapshot = await this.chain.order(action.orderId, "latest");
       if (!eligibility(snapshot, wallet).requestArbitration) throw new ApiError(409, "ACTION_NOT_AVAILABLE");
@@ -109,7 +108,7 @@ export class TransactionService {
     const [decimals, symbol] = await Promise.all([read("decimals"), read("symbol")]);
     const precision = Number(decimals);
     if (!Number.isInteger(precision) || precision < 0 || precision > 80) throw new ApiError(503, "TOKEN_METADATA_UNAVAILABLE");
-    const authorizationProfile = deployment.router && token.toLowerCase() === deployment.usdc?.toLowerCase() && precision === 6 && Boolean((await this.chain.call("receiveAuthorizationAssets", [token], block))[0]) ? { mode: "eip3009-receive" as const, name: "USDC", version: "2" } : undefined;
+    const authorizationProfile = token.toLowerCase() === deployment.usdc.toLowerCase() && precision === 6 && Boolean((await this.chain.call("receiveAuthorizationAssets", [token], block))[0]) ? { mode: "eip3009-receive" as const, name: "USDC", version: "2" } : undefined;
     await this.chain.ensureCanonical(block);
     return { token, symbol: String(symbol).slice(0, 32), decimals: precision, authorizationProfile };
   }
@@ -126,7 +125,7 @@ export class TransactionService {
     if (!allowed) throw new ApiError(409, "ASSET_NOT_ALLOWED");
     const read = async (name: string, args: unknown[] = []) => erc20.decodeFunctionResult(name, await this.chain.rpc<string>("eth_call", [{ to: token, data: erc20.encodeFunctionData(name, args) }, toQuantity(block.number)]))[0];
     const [decimals, symbol, balance, allowance] = await Promise.all([read("decimals"), read("symbol"), read("balanceOf", [wallet]), read("allowance", [wallet, escrowAddress])]);
-    const authorizationProfile = deployment.router && token.toLowerCase() === deployment.usdc?.toLowerCase() && Number(decimals) === 6 && Boolean((await this.chain.call("receiveAuthorizationAssets", [token], block))[0]) ? { mode: "eip3009-receive" as const, name: "USDC", version: "2" } : undefined;
+    const authorizationProfile = token.toLowerCase() === deployment.usdc.toLowerCase() && Number(decimals) === 6 && Boolean((await this.chain.call("receiveAuthorizationAssets", [token], block))[0]) ? { mode: "eip3009-receive" as const, name: "USDC", version: "2" } : undefined;
     await this.chain.ensureCanonical(block);
     return { token, decimals: Number(decimals), symbol: String(symbol).slice(0, 32), balance: String(balance), nativeBalance, allowance: String(allowance), allowed, authorizationProfile };
   }

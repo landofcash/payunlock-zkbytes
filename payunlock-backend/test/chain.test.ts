@@ -18,6 +18,41 @@ function fixture(overrides: Record<string, unknown> = {}) {
   return { chain: new ChainService("https://secret.example.invalid/key", rpc as typeof fetch), rpc, receipt };
 }
 describe("finality and failure boundaries", () => {
+  it.each(["direct", "relayed"])("recovers the accepted checkout commitment from a finalized %s purchase", async mode => {
+    const { chain, receipt } = fixture();
+    const receiving = { nonce: hash, publicKey: otherHash };
+    const order = { buyer: wallet, seller: escrowAddress, productKey: hash, requestId: otherHash, buyerReceiving: receiving } as ChainSnapshot["order"];
+    const eventOrder = [1, wallet, escrowAddress, hash, otherHash, receiving, receiving,
+      [escrowAddress, 1000, false, 0, 100, 100, 100], otherHash, 0, 0, 0, 0];
+    const event = escrowInterface.encodeEventLog(escrowInterface.getEvent("Purchased")!, [1, wallet, otherHash, eventOrder]);
+    const directInput = escrowInterface.encodeFunctionData("purchase", [escrowAddress, hash, otherHash, hash, receiving]);
+    const router = new Interface(["function purchaseWithAuthorization((address seller,bytes32 productKey,bytes32 requestId,bytes32 expectedCheckoutHash,(bytes32 nonce,bytes32 publicKey) receiving) intent,(address actor,uint256 validAfter,uint256 validBefore,bytes32 salt,bytes signature) auth)"]);
+    const relayedInput = router.encodeFunctionData("purchaseWithAuthorization", [[escrowAddress, hash, otherHash, hash, receiving], [wallet, 0, 100, hash, "0x"]]);
+    const result = { ...receipt, logs: [{ address: escrowAddress, ...event }] };
+    const tx = { hash, blockHash: receipt.blockHash, from: mode === "direct" ? wallet : escrowAddress,
+      to: mode === "direct" ? escrowAddress : deployment.router, input: mode === "direct" ? directInput : relayedInput };
+    const rpc = vi.spyOn(chain, "rpc");
+    rpc.mockImplementation(async <T>(method: string, params: unknown[]): Promise<T> => {
+      if (method === "eth_chainId") return "0x279f" as T;
+      if (method === "eth_getBlockByNumber") return { number: params[0] === "finalized" ? "0x20" : params[0], hash: receipt.blockHash, timestamp: "0x100" } as T;
+      if (method === "eth_getTransactionReceipt") return result as T;
+      if (method === "eth_getTransactionByHash") return tx as T;
+      throw new Error("Unexpected RPC");
+    });
+    expect(await chain.purchaseCheckoutHash("1", order, hash)).toBe(hash);
+    // Never use current fee settings to reconstruct the purchased commitment.
+    expect(rpc.mock.calls.some(([method]) => method === "eth_call")).toBe(false);
+    expect(await chain.purchaseCheckoutHash("2", order, hash)).toBeNull();
+    expect(await chain.purchaseCheckoutHash("1", { ...order, buyerReceiving: { ...receiving, nonce: otherHash } }, hash)).toBeNull();
+    tx.input = directInput;
+    tx.to = "0x3333333333333333333333333333333333333333";
+    expect(await chain.purchaseCheckoutHash("1", order, hash)).toBeNull();
+    tx.to = escrowAddress; tx.from = wallet;
+    result.blockHash = otherHash;
+    expect(await chain.purchaseCheckoutHash("1", order, hash)).toBeNull();
+    result.blockHash = receipt.blockHash; result.blockNumber = "0x21";
+    expect(await chain.purchaseCheckoutHash("1", order, hash)).toBeNull();
+  });
   it("checks a shared batch receipt once and rejects expired, canceled, mismatched or missing commitments", async () => {
     const { chain, receipt } = fixture();
     const iface = new Interface(["event DeliveryReserved(uint256 indexed orderId,uint64 publicationDeadline)"]);
@@ -44,7 +79,7 @@ describe("finality and failure boundaries", () => {
     await expect(fixture({ eth_getTransactionReceipt: { ...receipt, from: escrowAddress } }).chain.transaction(hash, wallet)).rejects.toMatchObject({ statusCode: 403 });
     expect((await fixture({ eth_getTransactionReceipt: { ...receipt, status: "0x0" } }).chain.transaction(hash, wallet)).status).toBe("finalized_revert");
   });
-  it.skipIf(!deployment.router)("accepts only the seller's finalized router reservation for publication", async () => {
+  it("accepts only the seller's finalized router reservation for publication", async () => {
     const { receipt } = fixture();
     const router = new Interface(["event ActionExecuted(address indexed actor,bytes32 indexed nonce,bytes4 indexed selector,bytes32 actionHash)"]);
     const reservation = new Interface(["event DeliveryReserved(uint256 indexed orderId,uint64 publicationDeadline)"]);

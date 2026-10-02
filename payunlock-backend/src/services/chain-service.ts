@@ -1,17 +1,15 @@
 import { readFileSync } from "node:fs";
-import { AbiCoder, Interface, keccak256, toQuantity, id as hashText } from "ethers";
+import { Interface, toQuantity } from "ethers";
 import { ApiError, json, type Assignment, type Block, type ChainSnapshot, type Order } from "../domain.js";
 
-const deploymentVersion = process.env.PAYUNLOCK_DEPLOYMENT_VERSION === "v5" ? "v5" : "v4";
-const artifact = JSON.parse(readFileSync(new URL(deploymentVersion === "v5"
-  ? "../../../payunlock-contract/abi/PayUnlock.json"
-  : "../../../payunlock-contract/ignition/deployments/monad-testnet-payunlock-v4/artifacts/PayUnlockV1%23PayUnlock.json", import.meta.url), "utf8"));
-export const deployment = JSON.parse(readFileSync(new URL(`../../../payunlock-contract/deployments/monad-testnet-payunlock-${deploymentVersion}.json`, import.meta.url), "utf8")) as { chainId: number; escrow: string; deploymentBlock: number; admin: string; router?: string; usdc?: string };
+const artifact = JSON.parse(readFileSync(new URL("../../../payunlock-contract/abi/PayUnlock.json", import.meta.url), "utf8"));
+export const deployment = JSON.parse(readFileSync(new URL("../../../payunlock-contract/deployments/monad-testnet-payunlock-v5.json", import.meta.url), "utf8")) as { chainId: number; escrow: string; deploymentBlock: number; admin: string; router: string; usdc: string };
 export const escrowAddress = deployment.escrow.toLowerCase();
 export const deploymentKey = `${deployment.chainId}:${escrowAddress}`;
 export const escrowInterface = new Interface(artifact.abi);
 const iface = escrowInterface;
-const routerInterface = new Interface(["event ActionExecuted(address indexed actor,bytes32 indexed nonce,bytes4 indexed selector,bytes32 actionHash)"]);
+const routerArtifact = JSON.parse(readFileSync(new URL("../../../payunlock-contract/abi/PayUnlockAuthorizationRouter.json", import.meta.url), "utf8"));
+const routerInterface = new Interface(routerArtifact.abi);
 const reservationSelectors = new Set([iface.getFunction("reserveDelivery")!.selector, iface.getFunction("reserveDeliveries")!.selector]);
 const plain = <T>(value: unknown): T => JSON.parse(json(value)) as T;
 class RpcRevert extends Error { constructor(public data: string | undefined) { super("RPC_REVERT"); } }
@@ -21,8 +19,8 @@ export interface CheckoutConfiguration {
   chainId: number; contract: string; seller: string; productKey: string; expectedTerms: string;
   terms: Order["terms"]; sellerReceiving: Order["sellerReceiving"]; status: number; allowed: boolean; block: Block;
   productTerms?: { token: string; price: string; hasEventEnd: boolean; eventEnd: string; hasReviewOverride: boolean; reviewOverride: string; commitmentWindow: string };
-  authorizationMode?: "eip3009-receive" | "direct-only";
-  serviceFee?: { bps: number; treasury: string; sellerCapBps: number };
+  authorizationMode: "eip3009-receive" | "direct-only";
+  serviceFee: { bps: number; treasury: string; sellerCapBps: number };
 }
 
 export class ChainService {
@@ -75,10 +73,10 @@ export class ChainService {
     const names = ["owner", "defaultReviewWindow", "responseWindow", "minResponseWindow", "minCommitmentWindow", "maxCommitmentWindow", "batchLimit", "MAX_BATCH"] as const;
     const values = await Promise.all(names.map(name => this.call(name, [], block)));
     const feeNames = ["serviceFeeBps", "feeTreasury", "offerPlacementFee", "placementFeeVersion", "arbitrationFeeAsset"] as const;
-    const feeValues = deployment.router ? await Promise.all(feeNames.map(name => this.call(name, [], block))) : undefined;
+    const feeValues = await Promise.all(feeNames.map(name => this.call(name, [], block)));
     await this.ensureCanonical(block);
     return { owner: String(values[0]![0]).toLowerCase(), reviewWindow: String(values[1]![0]), responseWindow: String(values[2]![0]), minResponseWindow: String(values[3]![0]), minCommitmentWindow: Number(values[4]![0]), maxCommitmentWindow: Number(values[5]![0]), batchLimit: Number(values[6]![0]), maxBatch: Number(values[7]![0]),
-      ...(feeValues ? { serviceFeeBps: Number(feeValues[0]![0]), feeTreasury: String(feeValues[1]![0]).toLowerCase(), offerPlacementFee: String(feeValues[2]![0]), placementFeeVersion: String(feeValues[3]![0]), arbitrationFeeAsset: String(feeValues[4]![0]).toLowerCase() } : {}), block };
+      serviceFeeBps: Number(feeValues[0]![0]), feeTreasury: String(feeValues[1]![0]).toLowerCase(), offerPlacementFee: String(feeValues[2]![0]), placementFeeVersion: String(feeValues[3]![0]), arbitrationFeeAsset: String(feeValues[4]![0]).toLowerCase(), block };
   }
   async configuration(seller: string, productKey: string): Promise<CheckoutConfiguration> {
     const block = await this.anchor();
@@ -87,9 +85,9 @@ export class ChainService {
       const product = productResult[0].toObject(true);
       const terms = plain<Order["terms"]>(termsResult[0].toObject(true));
       const allowed = (await this.call("allowedAssets", [terms.token], block))[0] as boolean;
-      const authorizationMode = deployment.router ? (await this.call("receiveAuthorizationAssets", [terms.token], block))[0] ? "eip3009-receive" as const : "direct-only" as const : undefined;
-      const feeResults = deployment.router ? await Promise.all([this.call("serviceFeeBps", [], block), this.call("feeTreasury", [], block), this.call("sellerFeeCapBps", [seller, productKey], block)]) : undefined;
-      const serviceFee = feeResults ? { bps: Number(feeResults[0]![0]), treasury: String(feeResults[1]![0]).toLowerCase(), sellerCapBps: Number(feeResults[2]![0]) } : undefined;
+      const authorizationMode = (await this.call("receiveAuthorizationAssets", [terms.token], block))[0] ? "eip3009-receive" as const : "direct-only" as const;
+      const feeResults = await Promise.all([this.call("serviceFeeBps", [], block), this.call("feeTreasury", [], block), this.call("sellerFeeCapBps", [seller, productKey], block)]);
+      const serviceFee = { bps: Number(feeResults[0]![0]), treasury: String(feeResults[1]![0]).toLowerCase(), sellerCapBps: Number(feeResults[2]![0]) };
       await this.ensureCanonical(block);
       return { chainId: deployment.chainId, contract: escrowAddress, seller, productKey, expectedTerms: expected[0] as string,
         terms, productTerms: plain(product.terms), sellerReceiving: plain(product.receiving), status: Number(product.status), allowed, block, authorizationMode, serviceFee };
@@ -151,9 +149,9 @@ export class ChainService {
     const receipt = await this.rpc<Receipt | null>("eth_getTransactionReceipt", [hash]);
     if (!receipt) return { status: "uncertain" as const };
     const direct = receipt.from.toLowerCase() === wallet && receipt.to?.toLowerCase() === target;
-    const relayedReservation = allowRelayedReservation && target === escrowAddress && !!deployment.router &&
+    const relayedReservation = allowRelayedReservation && target === escrowAddress &&
       receipt.to?.toLowerCase() === deployment.router.toLowerCase() && receipt.logs.some(log => {
-        if (log.address.toLowerCase() !== deployment.router!.toLowerCase()) return false;
+        if (log.address.toLowerCase() !== deployment.router.toLowerCase()) return false;
         try {
           const event = routerInterface.parseLog(log);
           return event?.name === "ActionExecuted" && String(event.args.actor).toLowerCase() === wallet && reservationSelectors.has(String(event.args.selector));
@@ -178,15 +176,47 @@ export class ChainService {
     const eligible = Boolean(commitment) && [finalized, latest].every(s => s.order.state === 2 && !s.canceled && BigInt(s.order.publicationDeadline) === BigInt(commitment!.args.publicationDeadline) && BigInt(s.order.publicationDeadline) > BigInt(s.block.timestamp));
     return { eligible, reason: eligible ? "finalized_reservation" : "order_changed_or_expired", checkedBlock: latest.block.number, publicationDeadline: latest.order.publicationDeadline };
   }
-}
-
-export function checkoutHashForOrder(order: Order) {
-  return keccak256(AbiCoder.defaultAbiCoder().encode([
-    "string", "uint256", "address", "address", "bytes32",
-    "tuple(address token,uint256 price,bool hasEventEnd,uint64 eventEnd,uint64 reviewWindow,uint64 responseWindow,uint32 commitmentWindow)",
-    "tuple(bytes32 nonce,bytes32 publicKey)", "bytes32",
-  ], ["payunlock-checkout-v1", deployment.chainId, escrowAddress, order.seller, order.productKey, order.terms, order.sellerReceiving,
-    hashText("payunlock-storage-v1:31536000:preparation:no-managers")]));
+  async purchaseCheckoutHash(orderId: string, order: Order, hash: string): Promise<string | null> {
+    const block = await this.anchor();
+    const receipt = await this.rpc<Receipt | null>("eth_getTransactionReceipt", [hash]);
+    if (!receipt || receipt.transactionHash !== hash || receipt.status !== "0x1" || Number(BigInt(receipt.blockNumber)) > block.number) return null;
+    const canonical = await this.block(receipt.blockNumber);
+    if (canonical.number !== Number(BigInt(receipt.blockNumber)) || canonical.hash !== receipt.blockHash) return null;
+    const purchased = receipt.logs.some(log => {
+      if (log.address.toLowerCase() !== escrowAddress) return false;
+      try {
+        const event = iface.parseLog(log);
+        return event?.name === "Purchased" && String(event.args.orderId) === orderId &&
+          String(event.args.buyer).toLowerCase() === order.buyer && event.args.requestId === order.requestId;
+      } catch { return false; }
+    });
+    if (!purchased) return null;
+    const tx = await this.rpc<{ hash: string; from: string; to: string | null; input: string; blockHash: string } | null>("eth_getTransactionByHash", [hash]);
+    if (!tx || tx.hash !== hash || tx.blockHash !== canonical.hash) return null;
+    let seller: string, productKey: string, requestId: string, expected: string, receiving: { nonce: string; publicKey: string }, buyer: string;
+    try {
+      if (tx.to?.toLowerCase() === escrowAddress) {
+        const call = iface.parseTransaction({ data: tx.input });
+        if (call?.name !== "purchase") return null;
+        [seller, productKey, requestId, expected, receiving] = call.args;
+        buyer = tx.from.toLowerCase();
+      } else if (tx.to?.toLowerCase() === deployment.router.toLowerCase()) {
+        const call = routerInterface.parseTransaction({ data: tx.input });
+        if (call?.name !== "purchaseWithAuthorization") return null;
+        const intent = call.args.intent;
+        seller = intent.seller; productKey = intent.productKey; requestId = intent.requestId;
+        expected = intent.expectedCheckoutHash; receiving = intent.receiving;
+        buyer = String(call.args.auth.actor).toLowerCase();
+      } else return null;
+    } catch { return null; }
+    if (buyer !== order.buyer || seller.toLowerCase() !== order.seller || productKey !== order.productKey || requestId !== order.requestId ||
+      receiving.nonce !== order.buyerReceiving.nonce || receiving.publicKey !== order.buyerReceiving.publicKey) return null;
+    const again = await this.rpc<Receipt | null>("eth_getTransactionReceipt", [hash]);
+    if (!again || again.blockNumber !== receipt.blockNumber || again.blockHash !== receipt.blockHash || again.transactionHash !== hash || again.status !== "0x1") return null;
+    await this.ensureCanonical(canonical);
+    await this.ensureCanonical(block);
+    return expected;
+  }
 }
 
 export function eligibility(snapshot: ChainSnapshot, wallet: string) {

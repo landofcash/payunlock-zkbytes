@@ -65,7 +65,7 @@ function PrivateOrders({ role }: { role: "buyer" | "seller" | "arbitrator" }) {
 export function BuyerOrderPage() { return <OrderPage role="buyer" />; }
 export function SellerOrderPage() { return <OrderPage role="seller" />; }
 export function ArbitratorOrderPage() { return <OrderPage role="arbitrator" />; }
-export function OrderPage({ role }: { role?: OrderRole } = {}) {
+export function OrderPage({ role }: { role: OrderRole }) {
   const { id } = useParams(), api = useCommerce(), access = useCommerceAccess();
   const [order, setOrder] = useState<PublicOrder>(), [error, setError] = useState(""), [refreshing, setRefreshing] = useState(false);
   const [refundIntent, setRefundIntent] = useState<{ id: string; account: string; kind: "claimRefund" | "claimResponseTimeout" }>();
@@ -76,7 +76,7 @@ export function OrderPage({ role }: { role?: OrderRole } = {}) {
   }, [id, revision]);
   const actualRole = order && orderRole(order.order, order.arbitrator, access.address);
   const participant = order && role && matchesOrderRole(role, order.order, order.arbitrator, access.address);
-  if (order && actualRole && (!role || !participant)) return <Navigate to={orderPath(order.orderId, actualRole)} replace />;
+  if (order && actualRole && !participant) return <Navigate to={orderPath(order.orderId, actualRole)} replace />;
   const buyer = order?.order.buyer === access.address?.toLowerCase();
   const refundKind = order && buyer ? publicRefundAction(order) : undefined;
   if (access.authenticated && participant) return <PrivateOrderPage role={role!} key={id + ':' + access.address?.toLowerCase()} publicOffer={order.offer} initialDialog={dialog} initialRefund={refundIntent && refundIntent.id === id && refundIntent.account === access.address?.toLowerCase() ? refundIntent.kind : undefined} onRefundConsumed={() => setRefundIntent(undefined)} />;

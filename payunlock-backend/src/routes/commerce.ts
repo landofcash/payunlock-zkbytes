@@ -149,14 +149,13 @@ export const commerceRoutes: FastifyPluginAsync<CommerceOptions> = async (app, o
     const { asset } = parse(z.strictObject({ asset: address }), request.params);
     const block = await chain.anchor("latest");
     const allowed = Boolean((await chain.call("allowedAssets", [asset], block))[0]);
-    const receiveAuthorization = deployment.router && asset !== "0x0000000000000000000000000000000000000000"
+    const receiveAuthorization = asset !== "0x0000000000000000000000000000000000000000"
       ? Boolean((await chain.call("receiveAuthorizationAssets", [asset], block))[0]) : false;
     await chain.ensureCanonical(block);
     return { asset, allowed, receiveAuthorization };
   });
   app.get("/platform/fees/:asset", async request => {
     const wallet = await identity(request), { asset } = parse(z.strictObject({ asset: address }), request.params);
-    if (!deployment.router) throw new ApiError(409, "ACTION_NOT_AVAILABLE");
     const block = await chain.anchor();
     const amount = String((await chain.call("accruedFees", [wallet, asset], block))[0]);
     await chain.ensureCanonical(block);
@@ -185,7 +184,7 @@ export const commerceRoutes: FastifyPluginAsync<CommerceOptions> = async (app, o
   app.get("/arbitrators/:wallet", async request => {
     const wallet = parse(z.strictObject({ wallet: address }), request.params).wallet, block = await chain.anchor();
     const result = await chain.call("arbitrators", [wallet], block);
-    const feeVersion = deployment.router ? String((await chain.call("arbitratorFeeVersion", [wallet], block))[0]) : undefined;
+    const feeVersion = String((await chain.call("arbitratorFeeVersion", [wallet], block))[0]);
     await chain.ensureCanonical(block);
     return { wallet, active: result[0], publicKey: result[1], keyVersion: String(result[2]), fee: String(result[3]), feeVersion };
   });
@@ -195,7 +194,7 @@ export const commerceRoutes: FastifyPluginAsync<CommerceOptions> = async (app, o
     for (const wallet of wallets.slice(0, query.limit)) {
       const result = await chain.call("arbitrators", [wallet], block);
       if (result[0]) items.push({ wallet, active: result[0], publicKey: result[1], keyVersion: String(result[2]), fee: String(result[3]),
-        feeVersion: deployment.router ? String((await chain.call("arbitratorFeeVersion", [wallet], block))[0]) : undefined });
+        feeVersion: String((await chain.call("arbitratorFeeVersion", [wallet], block))[0]) });
     }
     await chain.ensureCanonical(block);
     return { items, nextCursor: wallets.length > query.limit ? wallets[query.limit - 1] : null };
@@ -270,7 +269,19 @@ export const commerceRoutes: FastifyPluginAsync<CommerceOptions> = async (app, o
   }
   async function orderView(id: string, wallet: string, supplied?: ChainSnapshot) {
     const snapshot = await authorizedOrder(id, wallet, supplied);
-    await catalog.associate(id, snapshot.order);
+    if ((await catalog.offer(id)).status === "unavailable") {
+      await catalog.associate(id, snapshot.order, async () => {
+        // Indexer data locates the transaction; only finalized chain evidence
+        // establishes the checkout commitment accepted by this purchase.
+        try {
+          const hash = await indexer.purchaseTransaction(id);
+          return hash ? await chain.purchaseCheckoutHash(id, snapshot.order, hash) : null;
+        } catch (error) {
+          if (error instanceof ApiError && error.statusCode === 503) return null;
+          throw error;
+        }
+      });
+    }
     return { orderId: id, ...snapshot, eligibility: eligibility(snapshot, wallet), offer: await catalog.offer(id) };
   }
   // Public chain summaries deliberately exclude private purchased metadata,

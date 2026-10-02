@@ -15,7 +15,7 @@ const schema = z.object({
   CHAIN_ID: z.coerce.number().pipe(z.literal(10143)),
   ALLOWED_CHAIN_IDS: csv(z.coerce.number().pipe(z.literal(10143))),
   ALLOWED_PAYMENT_ASSETS: csv(z.string().regex(/^0x[0-9a-fA-F]{40}$/)),
-  PAYUNLOCK_DEPLOYMENT_VERSION: z.enum(["v4", "v5"]).default("v4"),
+  PAYUNLOCK_DEPLOYMENT_VERSION: z.literal("v5").default("v5"),
   RELAYER_PRIVATE_KEY: z.preprocess(v => v === "" ? undefined : v, z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional()),
   RELAYER_DAILY_BUDGET_WEI: z.preprocess(v => v === "" ? undefined : v, z.string().regex(/^[1-9][0-9]*$/).optional()),
   RELAYER_MAX_GAS_LIMIT: z.coerce.number().int().min(21000).max(10000000).default(2000000),

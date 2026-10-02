@@ -7,6 +7,7 @@ const envelope = z.array(z.object({ id: z.string(), account: z.string(), deploym
 // Public transaction metadata only: no signatures, encryption keys, object seeds or plaintext delivery.
 export class PurchaseJournal {
   constructor(private store: LocalStore) {}
+  // This is the journal schema namespace, independent of the escrow version.
   private key(account: string) { return `commerce-v4:${account.toLowerCase()}`; }
   async list(account: string): Promise<Operation[]> { return envelope.parse(await this.store.get(this.key(account)) ?? []) as Operation[]; }
   async save(record: Operation) {
