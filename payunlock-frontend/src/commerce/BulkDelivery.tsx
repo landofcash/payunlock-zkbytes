@@ -10,7 +10,7 @@ import { useSession } from "@/wallet/session-store";
 import { type ReviewedTransaction } from "@/wallet/managed-session";
 import { deliveryApproval, type DeliveryAuthorization } from "@/wallet/delivery-authorization";
 import { useCommerce, useCommerceAccess, type Configuration, type OrderView, type Page, type PreparedTx, type Product } from "./client";
-import { assignments, deliveryText, type BulkEntry, type BulkManifest, type ContentMode } from "./bulk-journal";
+import { assignments, deliveryText, type BulkEntry, type BulkManifest, type ContentMode } from "./bulk-content";
 import { NotSubmitted, runBulkDelivery, runBulkRefunds, type BulkRuntime } from "./bulk-runner";
 import { prepareDelivery, receivingMessage, type Order } from "./protocol";
 import { deploymentIdentity, protocolOrder, reference, storageService } from "./lifecycle";
@@ -34,7 +34,6 @@ export function BulkDelivery() {
   const [page, setPage] = useState<Page<OrderView>>({ items: [], nextCursor: null }), [cursors, setCursors] = useState<string[]>(["0"]), [filter, setFilter] = useState("all"), [selected, setSelected] = useState<Map<string, OrderView>>(new Map());
   const [mode, setMode] = useState<ContentMode>("shared"), [shared, setShared] = useState(""), [rows, setRows] = useState(""), [tickets, setTickets] = useState<Map<string, string>>(new Map()), [reviewed, setReviewed] = useState(false);
   const journal = useRef(new BulkDeliverySession()).current;
-  const credential = () => "";
   const [manifest, setManifest] = useState<BulkManifest>(), [entries, setEntries] = useState<BulkEntry[]>([]), [hash, setHash] = useState("");
   const [services, setServices] = useState<{ id: number; label: string }[]>([]), [serviceId, setServiceId] = useState(1), [txPrompt, setTxPrompt] = useState<PreparedTx>(), [lastTx, setLastTx] = useState<PreparedTx>();
   const [impact, setImpact] = useState<OrderView[]>(), [cancelConfirmed, setCancelConfirmed] = useState(false);
@@ -72,7 +71,7 @@ export function BulkDelivery() {
     const items: BulkEntry[] = kind === "delivery" ? preview : (impact ?? []).map(v => ({ order: protocolOrder(v, deployment), payload: { text: "", tickets: [] }, status: "draft" }));
     const op: BulkManifest = { version: 1, kind, id: crypto.randomUUID(), account, deployment, productId: id, productKey: config.productKey, orderIds: items.map(e => e.order.orderId), createdAt: new Date().toISOString(), mode, storageServiceId: serviceId, transactions: [], complete: false };
     journal.clear();
-    await withLock(op, async () => { setStage("Prepare delivery"); await journal.create(op, items, credential(), current); });
+    await withLock(op, async () => { setStage("Prepare delivery"); await journal.create(op, items, current); });
     if (!current()) return;
     setManifest(op); setEntries(items); setQuery({ operation: op.id }); setStep(2); setStage("Ready to send");
     setShared(""); setRows(""); setSelected(new Map()); setTickets(new Map());
@@ -81,9 +80,9 @@ export function BulkDelivery() {
   async function execute(cancelOnly = false) {
     if (!manifest || !wallet.session || !deployment) throw new Error("Unlock the delivery session first.");
     await withLock(manifest, async () => {
-      const op = await journal.load(manifest.id, credential()); setManifest(op);
+      const op = await journal.load(manifest.id); setManifest(op);
       if (op.account !== wallet.session!.address.toLowerCase()) throw new Error("Wrong wallet.");
-      const protectedEntries = await Promise.all(op.orderIds.map(orderId => journal.entry(op.id, orderId, credential())));
+      const protectedEntries = await Promise.all(op.orderIds.map(orderId => journal.entry(op.id, orderId)));
       let revoke: (() => void) | undefined;
       const scope: DeliveryAuthorization = { contract: op.deployment.contract, messages: [...new Set(protectedEntries.map(e => receivingMessage(e.order.seller.context)))], commitments: {}, references: {} };
       function authorize(items: BulkEntry[]) {
@@ -92,7 +91,7 @@ export function BulkDelivery() {
       }
       authorize(protectedEntries);
       const runtime: BulkRuntime = {
-        api, journal, password: credential(), current,
+        api, journal, current,
         update(label, items, tx) { if (current()) { authorize(items); setStage(label); setEntries(items.map(e => ({ ...e }))); if (tx) setLastTx(tx); } },
         async prepare(entry, view) {
           const service = storageService(await api.read(`/storage-service?id=${op.storageServiceId ?? serviceId}&prepare=true`));
@@ -135,11 +134,11 @@ export function BulkDelivery() {
   async function attachHash() {
     if (!manifest || !/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new Error("Enter the existing transaction hash.");
     await withLock(manifest, async () => {
-      const op = await journal.load(manifest.id, credential()), pending = op.transactions.find(t => ["checking", "signing"].includes(t.status));
+      const op = await journal.load(manifest.id), pending = op.transactions.find(t => ["checking", "signing"].includes(t.status));
       if (!pending) throw new Error("No uncertain transaction needs a hash.");
       const result = await api.request<{ status: string }>("/transactions/batch-status", { hash, action: pending.action });
       if (result.status === "uncertain") throw new Error("This transaction is not visible yet. Keep the existing operation and check again.");
-      pending.hash = hash; await journal.save(op, credential()); setManifest(op); setHash("");
+      pending.hash = hash; await journal.save(op); setManifest(op); setHash("");
     });
   }
   const display = manifest ? entries : preview, externalSignature = wallet.session?.kind !== "builtin" && wallet.walletActivity?.phase === "approval";

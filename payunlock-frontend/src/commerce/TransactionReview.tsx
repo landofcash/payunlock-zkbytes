@@ -21,7 +21,7 @@ export function TransactionReview({ record, summary, subject, confirmLabel, orde
   return <section className="transaction-review" aria-busy={busy || undefined}>
     <div className="transaction-review-summary">
       {subject && <h3>{subject}</h3>}
-      {summary ?? <>{record.configuration && (record.action?.kind === "purchase" || record.action?.kind === "approve") && <OrderAmount token={record.configuration.terms.token} price={record.configuration.terms.price} />}{(record.action?.kind === "requestArbitration" || record.action?.kind === "approveArbitrationFee") && record.action.expectedFee !== undefined && <OrderAmount token={record.action.expectedFeeAsset ?? "0x0000000000000000000000000000000000000000"} price={record.action.expectedFee} />}<p>{copy.description}</p></>}
+      {summary ?? <>{record.configuration && (record.action?.kind === "purchase" || record.action?.kind === "approve") && <OrderAmount token={record.configuration.terms.token} price={record.configuration.terms.price} />}{(record.action?.kind === "requestArbitration" || record.action?.kind === "approveArbitrationFee") && <OrderAmount token={record.action.expectedFeeAsset} price={record.action.expectedFee} />}<p>{copy.description}</p></>}
       {record.orderId && orderPath && <Link className="transaction-review-reference" to={orderPath}>Order #{record.orderId}</Link>}
     </div>
     {copy.warning && reviewing && <p className="transaction-review-warning"><CircleAlert size={18} aria-hidden="true" /><span>{copy.warning}</span></p>}

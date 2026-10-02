@@ -269,7 +269,8 @@ export const commerceRoutes: FastifyPluginAsync<CommerceOptions> = async (app, o
   }
   async function orderView(id: string, wallet: string, supplied?: ChainSnapshot) {
     const snapshot = await authorizedOrder(id, wallet, supplied);
-    if ((await catalog.offer(id)).status === "unavailable") {
+    let offer = await catalog.offer(id);
+    if (offer.status === "unavailable") {
       await catalog.associate(id, snapshot.order, async () => {
         // Indexer data locates the transaction; only finalized chain evidence
         // establishes the checkout commitment accepted by this purchase.
@@ -281,8 +282,9 @@ export const commerceRoutes: FastifyPluginAsync<CommerceOptions> = async (app, o
           throw error;
         }
       });
+      offer = await catalog.offer(id);
     }
-    return { orderId: id, ...snapshot, eligibility: eligibility(snapshot, wallet), offer: await catalog.offer(id) };
+    return { orderId: id, ...snapshot, eligibility: eligibility(snapshot, wallet), offer };
   }
   // Public chain summaries deliberately exclude private purchased metadata,
   // drafts, receiving material, records, eligibility and recovery information.

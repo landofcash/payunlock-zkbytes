@@ -1,10 +1,9 @@
 import { BulkDeliverySession, DeliverySession } from "../commerce/delivery-session";
-import { offerDraftKey } from "@/crypto/draft-envelope";
 // @vitest-environment node
 import { expect, it, vi } from "vitest";
 import { Interface, Wallet } from "ethers";
 import { encodeBase64, clearItemKeys } from "@zkbytes/sdk";
-import { assignments, BulkJournal, type BulkManifest, type BulkEntry } from "../commerce/bulk-journal";
+import { assignments, type BulkManifest, type BulkEntry } from "../commerce/bulk-content";
 import { runBulkDelivery, runBulkRefunds, sendBatch, NotSubmitted, type BulkRuntime } from "../commerce/bulk-runner";
 import { newOfferReceivingContext, newReceivingContext, restoreReceiving, restoreReceivingKeys, prepareDelivery, type Order } from "../commerce/protocol";
 import { ApiError, type Action, type OrderView, type PreparedTx } from "../commerce/client";
@@ -26,7 +25,7 @@ async function fixture(count = 3) {
   const storage = new Map<string, unknown>(), upload = vi.fn(async (item: { seed: string }) => { storage.set(item.seed, item); return {}; });
   const service = { id: 1, maxRetentionSeconds: 0, client: { recoverUpload: async (seed: string) => storage.has(seed) ? { outcome: "active", item: storage.get(seed) } : { outcome: "not-found" }, upload } };
   // Mock only transport and journal I/O. Protocol encryption and runner transitions are real.
-  const journal = { entry: async (_id: string, id: string) => structuredClone(database.get(id)!), saveEntry: async (_id: string, e: BulkEntry) => { database.set(e.order.orderId, structuredClone(e)); }, save: vi.fn(async () => {}) } as unknown as BulkJournal;
+  const journal = { entry: async (_id: string, id: string) => structuredClone(database.get(id)!), saveEntry: async (_id: string, e: BulkEntry) => { database.set(e.order.orderId, structuredClone(e)); }, save: vi.fn(async () => {}) } satisfies BulkRuntime["journal"];
   const pending = new Map<string, Action>(); let limit = 30, canceled = false;
   const request = vi.fn(async (path: string, body?: unknown): Promise<unknown> => {
     if (path === "/orders/batch") return { items: (body as { orderIds: string[] }).orderIds.map(id => structuredClone(views.get(id))) };
@@ -48,7 +47,7 @@ async function fixture(count = 3) {
     if (action.kind === "cancelProduct") { canceled = true; views.forEach(v => { v.canceled = true; }); }
     if (action.kind === "refundCanceledOrders") action.orderIds.forEach(id => { views.get(id)!.order.state = 9; });
   });
-  const runtime: BulkRuntime = { journal, password: "test password", current: () => true, api: { request: request as BulkRuntime["api"]["request"], read: (async (path: string) => path === "/deployment" ? deployment : path === "/platform" ? { batchLimit: 30 } : { id: 1, apiOrigin: "https://api.test", downloadOrigin: "https://download.test", maxRetentionSeconds: 0 }) as BulkRuntime["api"]["read"] }, update: vi.fn(), sleep: async () => {}, send, prepare: vi.fn(async entry => prepareDelivery({ order: entry.order, payload: entry.payload, signer: seller, offerKeys: keys, service: service as never, latestPublicationSeconds: BigInt(Math.floor(Date.now() / 1000) + 600), isCurrent: () => true })) };
+  const runtime: BulkRuntime = { journal, current: () => true, api: { request: request as BulkRuntime["api"]["request"], read: (async (path: string) => path === "/deployment" ? deployment : path === "/platform" ? { batchLimit: 30 } : { id: 1, apiOrigin: "https://api.test", downloadOrigin: "https://download.test", maxRetentionSeconds: 0 }) as BulkRuntime["api"]["read"] }, update: vi.fn(), sleep: async () => {}, send, prepare: vi.fn(async entry => prepareDelivery({ order: entry.order, payload: entry.payload, signer: seller, offerKeys: keys, service: service as never, latestPublicationSeconds: BigInt(Math.floor(Date.now() / 1000) + 600), isCurrent: () => true })) };
   return { seller, buyer, keys, receiving, orders, entries, op, views, database, runtime, request, send, upload, service, setLimit: (n: number) => { limit = n; }, close: () => { clearItemKeys(keys); receiving.privateKey.fill(0); } };
 }
 // Keep storage HTTP out of the transition tests; actual SDK storage is tested separately.
@@ -67,21 +66,6 @@ it("keeps repeated buyers distinct, rejects blank/mismatched rows, and makes tic
     expect(() => assignments(f.orders, "a".repeat(65536), "shared", "", tickets)).toThrow("64 KiB");
   } finally { f.close(); }
 });
-
-it("encrypts recovery content, verifies backups, preserves exact assignments, and rejects stale writes", async () => {
-  const f = await fixture(1), store = memory(), journal = new BulkJournal(store), password = "a long recovery password";
-  try {
-    await journal.create(f.op, f.entries, password, () => true);
-    const backup = await journal.export(f.op.id, password); expect(backup).not.toContain("shared secret");
-    const restored = new BulkJournal(memory()); await restored.import(backup, password, f.op.account, deployment);
-    expect((await restored.entry(f.op.id, "1", password)).payload).toEqual(f.entries[0]!.payload);
-    await expect(restored.import(backup, password, f.op.account, deployment)).rejects.toThrow("already exists");
-    await expect(journal.load(f.op.id, "wrong password")).rejects.toThrow();
-    const old = await journal.load(f.op.id, password); await journal.save(f.op, password);
-    await expect(journal.save(old, password)).rejects.toThrow("another tab");
-    await expect(journal.create({ ...f.op, id: crypto.randomUUID() }, f.entries, password, () => true)).rejects.toThrow("saved delivery");
-  } finally { f.close(); }
-}, 20000);
 
 it.each(["shared", "rows", "tickets"] as const)("delivers 30 orders with %s, splits gas-limited batches, and does not repeat completed uploads or transactions", async mode => {
   const f = await fixture(30); activeService = f.service; f.setLimit(7);
@@ -181,17 +165,6 @@ it("built-in delivery authorization is exact, revocable, and does not approve un
   } finally { session.dispose(); }
 }, 15000);
 
-it("restores a bulk delivery and its backup using offer keys without a passphrase", async () => {
-  const f = await fixture(2);
-  try {
-    const db = memory(), journal = new BulkJournal(db), key = await offerDraftKey(f.keys.encryptionPrivateKey, f.orders[0]!.seller.context);
-    await journal.create(f.op, f.entries, key, () => true);
-    const other = new BulkJournal(memory()), restoredKey = await offerDraftKey(f.keys.encryptionPrivateKey, f.orders[0]!.seller.context);
-    await other.import(await journal.export(f.op.id, key), restoredKey, f.op.account, f.op.deployment);
-    expect((await other.entry(f.op.id, '1', restoredKey)).payload).toEqual(f.entries[0]!.payload);
-    expect(JSON.stringify([...db.data.values()])).not.toContain('shared secret');
-  } finally { f.close(); }
-});
 it("retains recovery material until the exact published reference is visible", async () => {
   const f = await fixture(1); activeService = f.service;
   const original = f.runtime.api.request;
@@ -218,12 +191,12 @@ it("reprepares a reserved order after page loss and sends only TX2 with no persi
     expect(f.send.mock.calls.map(c => c[1].kind)).toEqual(['publishDeliveries']);
     expect(f.views.get('1')!.order.publicationDeadline).toBe(deadline);
     const transient = new BulkDeliverySession();
-    await transient.create(f.op, f.entries, '', () => true);
+    await transient.create(f.op, f.entries, () => true);
     expect((await transient.entry(f.op.id, '1')).payload.text).toBe('shared secret');
     await expect(new BulkDeliverySession().load(f.op.id)).rejects.toThrow();
     transient.clear(); await expect(transient.load(f.op.id)).rejects.toThrow();
     const prepared = await f.runtime.prepare(f.entries[0]!, f.views.get('1')!);
-    const single = new DeliverySession(), id = await single.prepare(prepared, '', () => true);
+    const single = new DeliverySession(), id = await single.prepare(prepared, () => true);
     expect((await single.restore(id)).item.seed).toBe(prepared.item.seed);
     await expect(new DeliverySession().restore(id)).rejects.toThrow();
     expect(await single.cleanupConfirmed(id, 'wrong')).toBe(false);

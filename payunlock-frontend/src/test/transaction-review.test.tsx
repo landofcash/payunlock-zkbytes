@@ -19,7 +19,7 @@ function Harness({ initial }: { initial: Operation }) {
   const [record, setRecord] = useState(initial), [open, setOpen] = useState(true);
   return open ? <OrderDialog title="Review refund" onClose={() => setOpen(false)}><TransactionPanel record={record} onChange={setRecord} onRetry={record.action ? async () => setRecord(await prepareOperation(api, record, record.action!)) : undefined} compactReview /></OrderDialog> : <p>Dialog closed</p>;
 }
-function mount(initial = operation()) { render(<MemoryRouter initialEntries={["/purchases/7"]}><Harness initial={initial} /></MemoryRouter>); }
+function mount(initial = operation(), path = "/purchases/7") { render(<MemoryRouter initialEntries={[path]}><Harness initial={initial} /></MemoryRouter>); }
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
@@ -109,4 +109,18 @@ it("clears a known failed relay authorization before reviewing a retry", async (
   await waitFor(() => expect(screen.getByRole("button", { name: "Confirm refund" })).toBeEnabled());
   expect(screen.getByRole("switch")).toBeEnabled();
   expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ progress: "review", relayNonce: undefined, relayExpiresAt: undefined }));
+});
+
+it.each([
+  ["/purchases/7", "/purchases/7"],
+  ["/sales/orders/7", "/sales/orders/7"],
+  ["/arbitration/7", "/arbitration/7"],
+])("links to the current order route from %s", (path, expected) => {
+  mount(operation({ progress: "finalized" }), path);
+  expect(screen.getByRole("link", { name: "Order #7" })).toHaveAttribute("href", expected);
+});
+
+it("omits an order link when the participant role is unknown", () => {
+  mount(operation({ progress: "finalized" }), "/platform");
+  expect(screen.queryByRole("link", { name: "Order #7" })).not.toBeInTheDocument();
 });

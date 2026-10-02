@@ -23,7 +23,7 @@ beforeEach(() => {
   product = { id: "11111111-1111-4111-8111-111111111111", title: "Example offer", description: "Content", revision: 1, visibility: "draft", draftTerms: { token: `0x${"00".repeat(20)}`, price: "1000", eventEnd: null, reviewWindow: null, commitmentWindow: 600 } };
   mocks.list.mockResolvedValue([]); mocks.matches.mockReturnValue(true);
   mocks.prepare.mockImplementation(async (_api, record, action) => ({ ...record, action, progress: "review" }));
-  mocks.read.mockImplementation(async path => path === "/platform" ? { minCommitmentWindow: 60, maxCommitmentWindow: 86400 } : { chainId: 10143, contract: `0x${"22".repeat(20)}`, reviewWindow: "86400" });
+  mocks.read.mockImplementation(async path => path === "/platform" ? { minCommitmentWindow: 60, maxCommitmentWindow: 86400, offerPlacementFee: "0", placementFeeVersion: "1", serviceFeeBps: 0 } : { chainId: 10143, contract: `0x${"22".repeat(20)}`, reviewWindow: "86400" });
   mocks.request.mockImplementation(async (path: string, body?: Partial<Product>) => {
     if (path.startsWith("/assets/")) return { symbol: "MON", decimals: 18 };
     if (path.endsWith("/registration")) { if (!body && !registered) throw Error("Not registered"); return { configuration: config }; }
@@ -48,7 +48,7 @@ it("keeps the anonymous draft and signs in only when review is requested", async
   await waitFor(() => expect(mocks.request).toHaveBeenCalledWith("/seller/products", expect.objectContaining({ title: "Unsigned draft" })));
 });
 it("shows the publishing cost and reveals fee and visibility details on request", async () => {
-  mocks.read.mockImplementation(async path => path === "/platform" ? { minCommitmentWindow: 60, maxCommitmentWindow: 86400, offerPlacementFee: "1000000000000000000", serviceFeeBps: 100 } : { chainId: 10143, contract: `0x${"22".repeat(20)}`, reviewWindow: "86400" });
+  mocks.read.mockImplementation(async path => path === "/platform" ? { minCommitmentWindow: 60, maxCommitmentWindow: 86400, offerPlacementFee: "1000000000000000000", placementFeeVersion: "1", serviceFeeBps: 100 } : { chainId: 10143, contract: `0x${"22".repeat(20)}`, reviewWindow: "86400" });
   open();
   const review = await screen.findByRole("button", { name: "Review draft" });
   await waitFor(() => expect(review).toBeEnabled());

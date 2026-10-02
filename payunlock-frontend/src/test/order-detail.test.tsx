@@ -361,7 +361,7 @@ it('keeps seller claim review and confirmation in a reopenable dialog', async ()
 });
 it('reopens a saved arbitration action in a transaction dialog', async () => {
   view.eligibility = { requestArbitration: true };
-  mocks.ops = [{ id: 'lifecycle:saved-arbitration', account: buyer, deployment: { chainId: 10143, contract: '0x3333333333333333333333333333333333333333' }, orderId: '7', action: { kind: 'requestArbitration', orderId: '7' }, hashes: [], progress: 'checking', version: 1 }];
+  mocks.ops = [{ id: 'lifecycle:saved-arbitration', account: buyer, deployment: { chainId: 10143, contract: '0x3333333333333333333333333333333333333333' }, orderId: '7', action: { kind: 'requestArbitration', orderId: '7', wallet: '0x4444444444444444444444444444444444444444', expectedKeyVersion: '1', expectedFeeVersion: '1', expectedFee: '0', expectedFeeAsset: '0x5555555555555555555555555555555555555555', evidence: { contentRef: { serviceId: 1, preparedAt: '100', creator: `0x${'11'.repeat(32)}`, buyerEnvelope: `0x03${'11'.repeat(64)}`, sellerEnvelope: `0x03${'22'.repeat(64)}`, contentHash: `0x${'33'.repeat(32)}` }, arbitratorEnvelope: `0x03${'44'.repeat(64)}` } }, hashes: [], progress: 'checking', version: 1 }];
   mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Check transaction status' }));
   expect(screen.getByRole('dialog', { name: 'Arbitration transaction' })).toHaveTextContent('Waiting for confirmation.');

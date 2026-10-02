@@ -15,6 +15,6 @@ export function registrationMatches(record: Operation, config: RegistrationConfi
     if (action === "disable") return config.status === (result.disabled ? 2 : 1);
     if (!config.productTerms || config.status === 0) return false;
     return Object.entries(config.productTerms).every(([key, value]) => String(result.terms[key]).toLowerCase() === String(value).toLowerCase()) && result.receiving.nonce === config.sellerReceiving.nonce && result.receiving.publicKey === config.sellerReceiving.publicKey &&
-      (record.action.kind !== "create" || (Number(result.feeCapBps) === config.serviceFee?.sellerCapBps && record.transaction.value === record.action.expectedPlacementFee));
+      (record.action.kind !== "create" || (Number(result.feeCapBps) === config.serviceFee.sellerCapBps && record.transaction.value === record.action.expectedPlacementFee));
   } catch { return false; }
 }

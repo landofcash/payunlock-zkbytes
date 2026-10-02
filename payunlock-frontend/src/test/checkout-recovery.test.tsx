@@ -69,7 +69,7 @@ it.each(["draft", "review", "reverted", "finalized"] as const)("hides manual sta
 });
 
 it("retains publication transaction details after confirmation for visibility recovery", async () => {
-  const original = { ...record(), requestId: undefined, action: { kind: "create" as const, productId: "offer", receiving: { nonce: hash, publicKey: hash } }, publication: { visibility: "hidden" as const, revision: 1 } };
+  const original = { ...record(), requestId: undefined, action: { kind: "create" as const, productId: "offer", receiving: { nonce: hash, publicKey: hash }, feeCapBps: 0, expectedPlacementFee: "0", expectedFeeVersion: "1" }, publication: { visibility: "hidden" as const, revision: 1 } };
   const saved = await journal.save(original), changed = vi.fn(), finalized = vi.fn();
   mocks.request.mockResolvedValue({ status: "finalized_success" });
   render(<MemoryRouter><TransactionPanel record={saved} onChange={changed} onFinalized={finalized} /></MemoryRouter>);

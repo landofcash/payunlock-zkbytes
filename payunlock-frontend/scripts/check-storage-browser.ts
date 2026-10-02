@@ -2,26 +2,24 @@
 // Node fixture; never pass a real wallet or real pending operation to this module.
 import { Wallet } from "ethers";
 import { ZkbytesClient, ZkbytesError, ZkbytesApiError } from "@zkbytes/sdk";
-import { FulfillmentJournal } from "../src/commerce/journal";
-import { IndexedStore } from "../src/storage/local-store";
-import { openDelivery, restoreReceiving } from "../src/commerce/protocol";
+import { DeliverySession } from "../src/commerce/delivery-session";
+import { decryptWithPassword } from "../src/crypto/password-envelope";
+import { openDelivery, restoreReceiving, type PreparedDelivery } from "../src/commerce/protocol";
 
 export async function checkStorageBrowser(backup: string) {
   let stage = "import";
   try {
     const password = "payunlock-public-test-fixture-only";
-    const journal = new FulfillmentJournal(new IndexedStore("payunlock-public-cors-fixture-v1"));
-    const { id } = JSON.parse(backup) as { id: string };
-    // Idempotent reruns preserve the encrypted fixture in this isolated browser DB.
-    const store = new IndexedStore("payunlock-public-cors-fixture-v1");
-    if (!await store.get(`pending:${id}`)) await journal.import(backup, password);
-    const pending = await journal.restore(id, password);
+    const session = new DeliverySession();
+    const prepared = JSON.parse(await decryptWithPassword(JSON.parse(backup), password, { domain: "payunlock-storage-probe-v1" })) as PreparedDelivery;
+    const id = await session.prepare(prepared, () => true);
+    const pending = await session.restore(id);
     const client = new ZkbytesClient({ apiOrigin: "https://api.zkbytes.com", downloadOrigin: "https://zkbytes.b-cdn.net" });
     stage = "upload";
     // Same signed object, same seed: exercise POST/preflight without a new object.
     await client.upload(pending.item);
     stage = "recover";
-    const outcome = await journal.recoverUpload(id, password, client, () => true);
+    const outcome = await session.recoverUpload(id, client, () => true);
     if (outcome !== "active") throw new Error("Fixture not active");
     for (const role of ["buyer", "seller"] as const) {
       stage = `${role}-restore-open`;

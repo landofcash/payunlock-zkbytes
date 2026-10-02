@@ -8,7 +8,7 @@ import { lifecycleSchemas, lifecycleSchema, lifecycleRequest } from "./lifecycle
 const erc20 = new Interface(["function approve(address,uint256) returns (bool)", "function allowance(address,address) view returns(uint256)", "function balanceOf(address) view returns(uint256)", "function decimals() view returns(uint8)", "function symbol() view returns(string)"]);
 export const actionSchema = z.discriminatedUnion("kind", [
   ...lifecycleSchemas,
-  z.strictObject({ kind: z.literal("create"), productId: z.uuid(), receiving, feeCapBps: z.number().int().min(0).max(10000).optional(), expectedPlacementFee: z.string().regex(/^(0|[1-9][0-9]*)$/).optional(), expectedFeeVersion: z.string().regex(/^(0|[1-9][0-9]*)$/).optional() }),
+  z.strictObject({ kind: z.literal("create"), productId: z.uuid(), receiving, feeCapBps: z.number().int().min(0).max(10000), expectedPlacementFee: z.string().regex(/^(0|[1-9][0-9]*)$/), expectedFeeVersion: z.string().regex(/^(0|[1-9][0-9]*)$/) }),
   z.strictObject({ kind: z.literal("update"), productId: z.uuid(), receiving }),
   z.strictObject({ kind: z.literal("disable"), productId: z.uuid(), disabled: z.boolean() }),
   z.strictObject({ kind: z.enum(["purchase", "approve"]), requestId: nonzeroHash, expectedTerms: nonzeroHash }),
@@ -32,7 +32,7 @@ export class TransactionService {
         if (t.commitmentWindow < policies.minCommitmentWindow || t.commitmentWindow > policies.maxCommitmentWindow) throw new ApiError(409, "PUBLICATION_BOUNDS_CHANGED_UPDATE_OFFER");
         const args: unknown[] = [m.product_key, { token: t.token, price: t.price, hasEventEnd: t.eventEnd !== null, eventEnd: t.eventEnd ?? "0", hasReviewOverride: t.reviewWindow !== null, reviewOverride: t.reviewWindow ?? "0", commitmentWindow: t.commitmentWindow }, action.receiving];
         if (action.kind === "create") {
-          if (action.feeCapBps === undefined || action.expectedPlacementFee === undefined || action.expectedFeeVersion === undefined || action.feeCapBps < policies.serviceFeeBps!) throw new ApiError(409, "FEE_REVIEW_REQUIRED");
+          if (action.feeCapBps < policies.serviceFeeBps) throw new ApiError(409, "FEE_REVIEW_REQUIRED");
           if (action.expectedPlacementFee !== policies.offerPlacementFee || action.expectedFeeVersion !== policies.placementFeeVersion) throw new ApiError(409, "PLACEMENT_FEE_CHANGED");
           args.push(action.feeCapBps, action.expectedPlacementFee, action.expectedFeeVersion);
           value = action.expectedPlacementFee;

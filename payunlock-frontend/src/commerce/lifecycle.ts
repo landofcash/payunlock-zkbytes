@@ -8,7 +8,7 @@ export type Reference = { serviceId: number; preparedAt: string; creator: string
 export type EvidenceReference = { contentRef: Reference; arbitratorEnvelope: string };
 export type ChainRecord = { turn: string; commitment: string; sender: string; reference: Reference };
 export type ChainAssignment = { wallet: string; publicKey: string; keyVersion: string; revision: string; fee: string; requester: string; handoverRecorded: boolean };
-export type Arbitrator = { wallet: string; active: boolean; publicKey: string; keyVersion: string; fee: string; feeVersion?: string };
+export type Arbitrator = { wallet: string; active: boolean; publicKey: string; keyVersion: string; fee: string; feeVersion: string };
 export type LifecycleAction =
   | { kind: "cancelProduct"; productKey: string }
   | { kind: "reserveDeliveries"; items: { orderId: string }[] }
@@ -19,7 +19,7 @@ export type LifecycleAction =
   | { kind: "publishDelivery"; orderId: string; reference: Reference; reservationTransaction: string }
   | { kind: "openDispute"; orderId: string; reference: Reference }
   | { kind: "replyToDispute"; orderId: string; expectedTurn: string; reference: Reference }
-  | { kind: "requestArbitration"; orderId: string; wallet: string; expectedKeyVersion: string; expectedFee: string; expectedFeeVersion?: string; expectedFeeAsset?: string; evidence: EvidenceReference }
+  | { kind: "requestArbitration"; orderId: string; wallet: string; expectedKeyVersion: string; expectedFee: string; expectedFeeVersion: string; expectedFeeAsset: string; evidence: EvidenceReference }
   | { kind: "submitArbitrationEvidence"; orderId: string; revision: string; evidence: EvidenceReference }
   | { kind: "requestArbitrationEvidence"; orderId: string; revision: string; participant: string; expectedIndex: string; request: EvidenceReference; advisoryDate: string }
   | { kind: "resolveArbitration"; orderId: string; revision: string; sellerWins: boolean }

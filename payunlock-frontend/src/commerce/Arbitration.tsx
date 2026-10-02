@@ -48,11 +48,9 @@ export function Arbitration({ view, order, service, prepareAction }: { view: Ord
     return rows;
   }
   useEffect(() => { if (panel) void task.run(async () => setChoices(await records())); }, [panel]);
-  useEffect(() => { void api.read<{ arbitrationFeeAsset?: string }>("/platform").then(async p => {
-    if (p.arbitrationFeeAsset) {
-      setFeeAsset(p.arbitrationFeeAsset);
-      setFeeMetadata(await api.read(`/public/assets/${p.arbitrationFeeAsset}`));
-    }
+  useEffect(() => { void api.read<{ arbitrationFeeAsset: string }>("/platform").then(async p => {
+    setFeeAsset(p.arbitrationFeeAsset);
+    setFeeMetadata(await api.read(`/public/assets/${p.arbitrationFeeAsset}`));
   }).catch(() => {}); }, [order.deployment.contract]);
   useEffect(() => {
     if (!relayJobId) return;
@@ -176,8 +174,9 @@ export function Arbitration({ view, order, service, prepareAction }: { view: Ord
     if (fresh.order.state === 6) await prepareAction({ kind: "submitArbitrationEvidence", orderId: order.orderId, revision: target.revision, evidence: content });
     else {
       if (!fresh.eligibility.requestArbitration || !registry) throw new Error("Arbitration entry is no longer eligible.");
+      if (!feeAsset) throw new Error("Wait for the arbitration fee token to load before continuing.");
       const deployment = await api.read<Deployment>("/deployment");
-      if (!payGasSelf && BigInt(registry.fee) > 0n && feeAsset && feeMetadata?.authorizationProfile?.mode === "eip3009-receive" && deployment.router && registry.feeVersion) {
+      if (!payGasSelf && BigInt(registry.fee) > 0n && feeMetadata?.authorizationProfile?.mode === "eip3009-receive" && deployment.router) {
         if (relayJobId) throw new Error("Check the pending arbitration activation before signing again.");
         const balance = await api.read<Asset>(`/public/wallets/${account}/assets/${feeAsset}`);
         if (BigInt(balance.balance) < BigInt(registry.fee)) throw new Error(`Insufficient ${balance.symbol} for the arbitration fee.`);

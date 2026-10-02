@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Interface, Transaction, Wallet } from "ethers";
 import { CatalogRepository } from "../src/repositories/catalog-repository.js";
 import { ChainService, escrowAddress, escrowInterface, type CheckoutConfiguration } from "../src/services/chain-service.js";
-import { TransactionService } from "../src/services/transaction-service.js";
+import { TransactionService, actionSchema } from "../src/services/transaction-service.js";
 const hash = `0x${"11".repeat(32)}`, buyer = Wallet.createRandom(), seller = Wallet.createRandom().address.toLowerCase();
 const wallet = buyer.address.toLowerCase();
 function fixture() {
@@ -17,6 +17,15 @@ function fixture() {
   return { chain, catalog, configuration, service: new TransactionService(chain, catalog) };
 }
 describe("bounded wallet transactions", () => {
+  it("requires the complete reviewed V5 offer fee commitment", () => {
+    const action = { kind: "create", productId: "11111111-1111-4111-8111-111111111111", receiving: { nonce: hash, publicKey: hash }, feeCapBps: 100, expectedPlacementFee: "0", expectedFeeVersion: "1" };
+    expect(actionSchema.safeParse(action).success).toBe(true);
+    for (const field of ["feeCapBps", "expectedPlacementFee", "expectedFeeVersion"] as const) {
+      const incomplete = { ...action };
+      Reflect.deleteProperty(incomplete, field);
+      expect(actionSchema.safeParse(incomplete).success).toBe(false);
+    }
+  });
   it("binds purchase calldata and exact native value to the persisted request and receiving identity", async () => {
     const { service } = fixture();
     const result = await service.request(wallet, { kind: "purchase", requestId: hash, expectedTerms: hash });

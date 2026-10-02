@@ -10,7 +10,7 @@ import { restoreReceiving, RETENTION_SECONDS } from "./protocol";
 import type { Operation } from "./purchase-journal";
 import { Feedback, journal, prepareOperation, randomId, TransactionPanel, useTask, WalletGate } from "./ui";
 
-type PlatformSettings = { owner: string; reviewWindow: string; responseWindow: string; minResponseWindow: string; minCommitmentWindow: number; maxCommitmentWindow: number; batchLimit: number; maxBatch: number; serviceFeeBps?: number; feeTreasury?: string; offerPlacementFee?: string; placementFeeVersion?: string; arbitrationFeeAsset?: string };
+type PlatformSettings = { owner: string; reviewWindow: string; responseWindow: string; minResponseWindow: string; minCommitmentWindow: number; maxCommitmentWindow: number; batchLimit: number; maxBatch: number; serviceFeeBps: number; feeTreasury: string; offerPlacementFee: string; placementFeeVersion: string; arbitrationFeeAsset: string };
 type TokenMetadata = { symbol: string; decimals: number };
 type AdminOrder = OrderView & { assignmentFeeAsset?: string };
 type ChangeSummary = { title: string; rows: [string, string, string][] };
@@ -77,8 +77,8 @@ export function Platform() {
     setPlatform(settings); setDeployment(currentDeployment);
     setDurationInput(settings.reviewWindow); setResponse(settings.responseWindow); setFloor(settings.minResponseWindow);
     setMinimum(String(settings.minCommitmentWindow)); setMaximum(String(settings.maxCommitmentWindow)); setBatch(String(settings.batchLimit));
-    setServiceBps(String((settings.serviceFeeBps ?? 0) / 100)); setTreasury(settings.feeTreasury ?? "");
-    setPlacement(settings.offerPlacementFee ? formatEther(settings.offerPlacementFee) : ""); setArbitrationAsset(settings.arbitrationFeeAsset ?? "");
+    setServiceBps(String(settings.serviceFeeBps / 100)); setTreasury(settings.feeTreasury);
+    setPlacement(formatEther(settings.offerPlacementFee)); setArbitrationAsset(settings.arbitrationFeeAsset);
     const metadata = settings.arbitrationFeeAsset ? await api.read<TokenMetadata>(`/public/assets/${settings.arbitrationFeeAsset}`).catch(() => undefined) : undefined;
     setFeeToken(metadata);
     if (wallet.session) {
@@ -121,7 +121,7 @@ export function Platform() {
         <div className="card platform-card"><h3>Receiving key</h3><p>Derive your public key to give to the platform administrator. Your private key stays in your wallet.</p><Button icon={KeyRound} variant="secondary" disabled={task.busy || wallet.busy || !deployment} onClick={() => void task.run(async () => {
           const key = await wallet.runOperation(async (session, isCurrent) => { const identity = await restoreReceiving(arbitratorContext(deployment!, session.address), session, isCurrent); try { return hexKey(identity.publicKey); } finally { identity.privateKey.fill(0); } }); setMyPublicKey(key);
         })}>Derive public receiving key</Button>{myPublicKey && <p className="address">{myPublicKey}</p>}</div>
-        {deployment?.router && myArbitrator?.active && <div className="card platform-card"><h3>My arbitration fee</h3><p>Current fee: <strong>{tokenAmount(myArbitrator.fee, feeToken)}</strong>. A new fee affects future cases.</p><label>New fee in {feeToken?.symbol ?? "token units"}<input inputMode="decimal" value={myFee} onChange={e => setMyFee(e.target.value)} /></label><Button disabled={task.busy || pending || !feeToken || !validAmount(myFee, feeToken?.decimals ?? 0) || !myArbitrator.feeVersion || myFee === formatUnits(myArbitrator.fee, feeToken?.decimals ?? 18)} onClick={() => void task.run(() => prepare({ kind: "setMyArbitrationFee", expectedVersion: myArbitrator.feeVersion!, fee: parseUnits(myFee, feeToken!.decimals).toString() }))}>Save my fee</Button></div>}
+        {deployment?.router && myArbitrator?.active && <div className="card platform-card"><h3>My arbitration fee</h3><p>Current fee: <strong>{tokenAmount(myArbitrator.fee, feeToken)}</strong>. A new fee affects future cases.</p><label>New fee in {feeToken?.symbol ?? "token units"}<input inputMode="decimal" value={myFee} onChange={e => setMyFee(e.target.value)} /></label><Button disabled={task.busy || pending || !feeToken || !validAmount(myFee, feeToken?.decimals ?? 0) || myFee === formatUnits(myArbitrator.fee, feeToken?.decimals ?? 18)} onClick={() => void task.run(() => prepare({ kind: "setMyArbitrationFee", expectedVersion: myArbitrator.feeVersion, fee: parseUnits(myFee, feeToken!.decimals).toString() }))}>Save my fee</Button></div>}
       </section>
 
       {claimCard && (isTreasury ? <section className="platform-group" aria-labelledby="treasury-fees"><h2 id="treasury-fees">Treasury</h2>{claimCard}</section> : <details className="platform-group platform-past-fees"><summary>Claim past treasury fees</summary>{claimCard}</details>)}

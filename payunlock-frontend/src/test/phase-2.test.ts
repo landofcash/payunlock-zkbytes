@@ -1,4 +1,3 @@
-import { offerDraftKey, encryptDraft, decryptDraft } from "@/crypto/draft-envelope";
 // @vitest-environment node
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,7 +8,7 @@ import { WalletVault } from "@/wallet/vault";
 import { unlockWallet } from "@/wallet/managed-session";
 import { checkCompatibility } from "@/wallet/compatibility";
 import { contentHash, expiration, newReceivingContext, openDelivery, prepareDelivery, publishEligibility, recordHash, restoreReceiving, receivingMessage, RETENTION_SECONDS, type Order, type Opening } from "@/commerce/protocol";
-import { FulfillmentJournal } from "@/commerce/journal";
+import { DeliverySession } from "@/commerce/delivery-session";
 import { openEvidence, prepareEvidence, verifyEvidence, persistEvidence, restoreEvidence } from "@/commerce/evidence";
 import { canonical } from "@/crypto/encoding";
 import { sendReviewedTransaction } from "@/wallet/transactions";
@@ -145,37 +144,35 @@ describe("order-bound delivery and recovery", () => {
     await expect(restoreReceiving(f.order.buyer.context, sellerWallet, current)).rejects.toThrow("Wrong");
     await expect(restoreReceiving(f.order.buyer.context, buyerWallet, current, f.seller.publicKey)).rejects.toThrow("does not match");
   });
-  it("persists before upload, survives a lost response and reload, and retains TX1/TX2 state", async () => {
-    const f = await fixture(), storage = store(), journal = new FulfillmentJournal(storage);
-    const id = await journal.prepare(f.prepared, password, current);
-    await expect(journal.prepare(f.prepared, password, current)).rejects.toThrow("changed");
-    expect(JSON.stringify(await storage.get(`pending:${id}`))).not.toContain(f.prepared.item.seed);
-    expect(JSON.stringify(await storage.get(`pending:${id}`))).not.toContain(f.prepared.opening.salt);
+  it("recovers a lost upload response within the mounted session and retains transaction state", async () => {
+    const f = await fixture(), session = new DeliverySession();
+    const id = await session.prepare(f.prepared, current);
     f.loseResponse();
-    await expect(journal.upload(id, password, f.client, current)).rejects.toThrow("uncertain");
-    const reloaded = new FulfillmentJournal(storage);
-    expect((await reloaded.restore(id, password)).progress).toBe("upload-uncertain");
-    expect(await reloaded.recoverUpload(id, password, f.client, current)).toBe("active");
-    await reloaded.update(id, password, "tx1-pending");
-    await reloaded.update(id, password, "tx1-finalized");
-    const backup = await reloaded.export(id), other = new FulfillmentJournal(store());
-    await other.import(backup, password);
-    expect((await other.restore(id, password)).opening).toEqual(f.prepared.opening);
-    expect((await other.restore(id, password)).progress).toBe("tx1-finalized");
+    await expect(session.upload(id, f.client, current)).rejects.toThrow();
+    expect((await session.restore(id)).progress).toBe("upload-uncertain");
+    expect(await session.recoverUpload(id, f.client, current)).toBe("active");
+    expect((await session.restore(id)).item).toEqual(f.prepared.item);
+    await session.update(id, "tx1-pending");
+    await session.update(id, "tx1-finalized");
+    expect((await session.restore(id)).progress).toBe("tx1-finalized");
     const state = { finalizedSuccessfulTx1: true, canceled: false, deadline: 100n, chainTime: 99n };
     expect(() => publishEligibility(f.prepared, state)).not.toThrow();
     for (const change of [{ chainTime: 100n }, { canceled: true }, { finalizedSuccessfulTx1: false }]) expect(() => publishEligibility(f.prepared, { ...state, ...change })).toThrow();
-    await expect(other.cleanup(id, password)).rejects.toThrow("unpublished");
-    await other.update(id, password, "tx2-pending"); await other.update(id, password, "published"); await other.cleanup(id, password);
-    await expect(other.restore(id, password)).rejects.toThrow();
-  }, 15000);
-  it("does not upload when persistence fails or the session changed", async () => {
-    const f = await fixture(), storage = store();
-    vi.spyOn(storage, "compareAndSwap").mockRejectedValue(new Error("quota"));
-    const journal = new FulfillmentJournal(storage), upload = vi.spyOn(f.client, "upload");
-    await expect(journal.prepare(f.prepared, password, current)).rejects.toThrow("quota");
+    await expect(new DeliverySession().restore(id)).rejects.toThrow();
+    expect(await session.cleanupConfirmed(id, "wrong commitment")).toBe(false);
+    expect((await session.restore(id)).opening).toEqual(f.prepared.opening);
+    await session.update(id, "tx2-pending");
+    expect(await session.cleanupConfirmed(id, f.prepared.recordHash)).toBe(true);
+    await expect(session.restore(id)).rejects.toThrow();
+    for (const role of ["buyer", "seller"] as const) expect((await openDelivery({ record: f.prepared.record, expectedRecordHash: f.prepared.recordHash, order: f.order, role, privateKey: f[role].privateKey, services: [f.service], isCurrent: current })).payload).toEqual(f.prepared.opening.payload);
+  });
+  it("does not prepare or upload after the session changes", async () => {
+    const f = await fixture(), session = new DeliverySession(), upload = vi.spyOn(f.client, "upload");
+    await expect(session.prepare(f.prepared, () => false)).rejects.toThrow("Wallet changed");
+    const id = await session.prepare(f.prepared, current);
+    await expect(session.upload(id, f.client, () => false)).rejects.toThrow("Wallet changed");
     expect(upload).not.toHaveBeenCalled();
-    await expect(journal.prepare(f.prepared, password, () => false)).rejects.toThrow("Session");
+    expect((await session.restore(id)).progress).toBe("prepared");
   });
   it("enforces one-year retention even with the backend cap disabled", async () => {
     const f = await fixture(), now = Math.floor(Date.now() / 1000) * 1000, latest = BigInt(Math.floor(now / 1000) + 60);
@@ -215,34 +212,4 @@ describe("order-bound delivery and recovery", () => {
     const badRecord = { ...f.prepared.record, buyerEnvelope: f.prepared.record.sellerEnvelope };
     expect(recordHash(badRecord)).not.toBe(f.prepared.recordHash);
   });
-});
-
-it("recovers delivery drafts with offer keys and erases only an exact confirmed publication", async () => {
-  const f = await fixture(), storage = store(), journal = new FulfillmentJournal(storage);
-  const key = await offerDraftKey(f.seller.privateKey, f.order.seller.context);
-  expect(key.extractable).toBe(false);
-  const id = await journal.prepare(f.prepared, key, current);
-  const saved = JSON.stringify(await storage.get('pending:' + id));
-  expect(saved).not.toContain(f.prepared.item.seed);
-  expect(saved).not.toContain('SECRET-42');
-  await journal.upload(id, key, f.client, current);
-  await journal.update(id, key, 'tx1-pending');
-  await journal.update(id, key, 'tx1-finalized');
-  const restoredKey = await offerDraftKey(f.seller.privateKey, f.order.seller.context);
-  expect((await new FulfillmentJournal(storage).restore(id, restoredKey)).item).toEqual(f.prepared.item);
-  const wrongKey = await offerDraftKey(f.seller.privateKey, { ...f.order.seller.context, nonce: 'another offer' });
-  await expect(journal.restore(id, wrongKey)).rejects.toThrow();
-  await expect(journal.cleanup(id, key)).rejects.toThrow('unpublished');
-  expect(await journal.cleanupConfirmed(id, 'different record')).toBe(false);
-  expect(await storage.get('pending:' + id)).toBeDefined();
-  const other = new FulfillmentJournal(store());
-  await other.import(await journal.export(id), restoredKey);
-  expect((await other.restore(id, restoredKey)).opening).toEqual(f.prepared.opening);
-  await journal.update(id, key, 'tx2-pending');
-  expect(await journal.cleanupConfirmed(id, f.prepared.recordHash)).toBe(true);
-  expect(await storage.get('pending:' + id)).toBeUndefined();
-  // Publication remains readable for both participants after local draft deletion.
-  for (const role of ['buyer', 'seller'] as const) expect((await openDelivery({ record: f.prepared.record, expectedRecordHash: f.prepared.recordHash, order: f.order, role, privateKey: f[role].privateKey, services: [f.service], isCurrent: current })).payload).toEqual(f.prepared.opening.payload);
-  const envelope = await encryptDraft('private', key, { id: 'one' });
-  await expect(decryptDraft(envelope, key, { id: 'two' })).rejects.toThrow();
 });

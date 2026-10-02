@@ -1,14 +1,14 @@
-import type { DraftCredential } from "@/crypto/draft-envelope";
 import { canonical } from "@/crypto/encoding";
 import { ApiError, type Action, type OrderView, type Page, type PreparedTx } from "./client";
 import { protocolOrder, reference, storageService, type ChainRecord } from "./lifecycle";
-import { type BulkEntry, type BulkManifest, type BulkTransaction, BulkJournal } from "./bulk-journal";
+import { type BulkEntry, type BulkManifest, type BulkTransaction } from "./bulk-content";
+import type { BulkDeliverySession } from "./delivery-session";
 import type { PreparedDelivery } from "./protocol";
 import { walletErrorKind } from "@/wallet/errors";
 
 export type BulkApi = { request<T>(path: string, body?: unknown, method?: string): Promise<T>; read<T>(path: string): Promise<T> };
 export type BulkRuntime = {
-  api: BulkApi; journal: Pick<BulkJournal, "entry" | "saveEntry" | "save">; password: DraftCredential; current(): boolean;
+  api: BulkApi; journal: Pick<BulkDeliverySession, "entry" | "saveEntry" | "save">; current(): boolean;
   prepare(entry: BulkEntry, view: OrderView): Promise<PreparedDelivery>;
   send(tx: PreparedTx, action: Action, remember: (hash: string, raw?: string) => Promise<void>): Promise<void>;
   update(stage: string, entries: BulkEntry[], tx?: PreparedTx): void;
@@ -41,7 +41,7 @@ export async function actionComplete(api: BulkApi, action: Action): Promise<bool
   return actionIds(action).length > 0;
 }
 export async function settleTransaction(runtime: BulkRuntime, manifest: BulkManifest, pending: BulkTransaction) {
-  const { api, journal, password } = runtime;
+  const { api, journal } = runtime;
   const check = () => { if (!runtime.current()) throw new Error("Paused. Reconnect the same wallet to resume."); };
   for (let attempt = 0; attempt < 15; attempt++) {
     check();
@@ -52,14 +52,14 @@ export async function settleTransaction(runtime: BulkRuntime, manifest: BulkMani
         check();
         try { await api.request("/transactions/broadcast", { action: pending.action, raw: pending.raw }); } catch { /* Remains uncertain; only authoritative effects or finality can settle it. */ }
       }
-      if (result.status === "finalized_revert") { pending.status = "reverted"; await journal.save(manifest, password); return false; }
+      if (result.status === "finalized_revert") { pending.status = "reverted"; await journal.save(manifest); return false; }
       if (result.status === "finalized_success") {
         if (pending.action.kind === "cancelProduct" ? (await api.request<{ configuration: { status: number } }>(`/seller/products/${manifest.productId}/registration`)).configuration.status !== 3 : !await actionComplete(api, pending.action)) throw new Error("Transaction finalized but its intended effects are not confirmed. Keep this operation and check again.");
-        pending.status = "finalized"; await journal.save(manifest, password); return true;
+        pending.status = "finalized"; await journal.save(manifest); return true;
       }
     } else {
       const canceled = pending.action.kind === "cancelProduct" && (await api.request<{ configuration: { status: number } }>(`/seller/products/${manifest.productId}/registration`)).configuration.status === 3;
-      if (canceled || await actionComplete(api, pending.action)) { pending.status = "finalized"; await journal.save(manifest, password); return true; }
+      if (canceled || await actionComplete(api, pending.action)) { pending.status = "finalized"; await journal.save(manifest); return true; }
       throw new Error("Wallet result is uncertain. Check the existing transaction or provide its hash; do not send it again.");
     }
     if (attempt < 14) await (runtime.sleep?.(2000) ?? new Promise(resolve => setTimeout(resolve, 2000)));
@@ -69,17 +69,17 @@ export async function settleTransaction(runtime: BulkRuntime, manifest: BulkMani
 export async function sendBatch(runtime: BulkRuntime, manifest: BulkManifest, action: Action, tx: PreparedTx) {
   if (!runtime.current()) throw new Error("Wallet changed.");
   const pending: BulkTransaction = { action, tx, status: "signing" };
-  manifest.transactions.push(pending); await runtime.journal.save(manifest, runtime.password);
+  manifest.transactions.push(pending); await runtime.journal.save(manifest);
   try {
     if (!runtime.current()) throw new NotSubmitted("Wallet changed before signing.");
-    await runtime.send(tx, action, async (hash, raw) => { pending.hash = hash; if (raw) pending.raw = raw; pending.status = "checking"; await runtime.journal.save(manifest, runtime.password); });
+    await runtime.send(tx, action, async (hash, raw) => { pending.hash = hash; if (raw) pending.raw = raw; pending.status = "checking"; await runtime.journal.save(manifest); });
   } catch (error) {
     // Only explicit rejection proves an external wallet did not submit anything.
     if (!pending.hash && (error instanceof NotSubmitted || walletErrorKind(error) === "rejected")) pending.status = "rejected";
     else pending.status = "checking";
-    await runtime.journal.save(manifest, runtime.password); throw error;
+    await runtime.journal.save(manifest); throw error;
   }
-  pending.status = "checking"; await runtime.journal.save(manifest, runtime.password);
+  pending.status = "checking"; await runtime.journal.save(manifest);
   return settleTransaction(runtime, manifest, pending);
 }
 async function commitHash(runtime: BulkRuntime, manifest: BulkManifest, entry: BulkEntry) {
@@ -95,11 +95,11 @@ async function commitHash(runtime: BulkRuntime, manifest: BulkManifest, entry: B
   throw new Error("Reservation is finalized; its transaction hash is still syncing. Keep the saved delivery and retry.");
 }
 export async function runBulkDelivery(runtime: BulkRuntime, manifest: BulkManifest) {
-  const { api, journal, password } = runtime;
+  const { api, journal } = runtime;
   const check = () => { if (!runtime.current()) throw new Error("Paused. Unlock the same wallet and resume this operation."); };
   const active = await api.read<{ chainId: number; contract: string }>("/deployment");
   if (active.chainId !== manifest.deployment.chainId || active.contract.toLowerCase() !== manifest.deployment.contract) throw new Error("Operation belongs to another deployment.");
-  const entries = await Promise.all(manifest.orderIds.map(id => journal.entry(manifest.id, id, password)));
+  const entries = await Promise.all(manifest.orderIds.map(id => journal.entry(manifest.id, id)));
   const update = (stage: string, tx?: PreparedTx) => { check(); runtime.update(stage, entries, tx); };
   for (const tx of manifest.transactions.filter(t => ["signing", "checking"].includes(t.status))) { update("Checking saved transaction"); await settleTransaction(runtime, manifest, tx); }
   const synchronize = async (entry: BulkEntry, cached?: OrderView) => {
@@ -114,7 +114,7 @@ export async function runBulkDelivery(runtime: BulkRuntime, manifest: BulkManife
       const cleared: BulkEntry = { ...entry, status: "published", payload: { text: "", tickets: [] } };
       delete cleared.prepared;
       delete cleared.error;
-      await journal.saveEntry(manifest.id, cleared, password);
+      await journal.saveEntry(manifest.id, cleared);
       Object.assign(entry, cleared);
       delete entry.prepared;
       delete entry.error;
@@ -130,7 +130,7 @@ export async function runBulkDelivery(runtime: BulkRuntime, manifest: BulkManife
       const end = Math.max(publication, Number(view.order.terms.eventEnd)) + Number(view.order.terms.reviewWindow);
       if (end * 1000 >= Date.parse(entry.prepared.record.expiresAt)) { entry.status = "blocked"; entry.error = "Saved content no longer covers the purchased review window. Keep this record and use the order's refund path."; }
     }
-    if (before !== canonical(entry)) await journal.saveEntry(manifest.id, entry, password); return view;
+    if (before !== canonical(entry)) await journal.saveEntry(manifest.id, entry); return view;
   };
   // Finish existing reservations before spending time on new preparations.
   const initial = await snapshots(api, manifest.orderIds);
@@ -151,7 +151,7 @@ export async function runBulkDelivery(runtime: BulkRuntime, manifest: BulkManife
       if (!splitError(error)) throw error;
       if (group.length > 1) { const half = Math.ceil(group.length / 2); await deliverBatch(group.slice(0, half), publishing); await deliverBatch(group.slice(half), publishing); return; }
       const entry = group[0]!; await synchronize(entry);
-      if (entry.status !== "skipped" && entry.status !== "published") { entry.status = "blocked"; entry.error = "This order could not be simulated. Check eligibility and retry."; await journal.saveEntry(manifest.id, entry, password); }
+      if (entry.status !== "skipped" && entry.status !== "published") { entry.status = "blocked"; entry.error = "This order could not be simulated. Check eligibility and retry."; await journal.saveEntry(manifest.id, entry); }
       return;
     }
     update(publishing ? "Approve publication" : "Approve reservation", tx);
@@ -159,7 +159,7 @@ export async function runBulkDelivery(runtime: BulkRuntime, manifest: BulkManife
     update(publishing ? "Verifying publication" : "Reservation finalized");
     if (!success) {
       if (group.length > 1) { const half = Math.ceil(group.length / 2); await deliverBatch(group.slice(0, half), publishing); await deliverBatch(group.slice(half), publishing); }
-      else { await synchronize(group[0]!); group[0]!.error = "Transaction reverted; refresh and retry this order."; if (group[0]!.status !== "skipped") group[0]!.status = "blocked"; await journal.saveEntry(manifest.id, group[0]!, password); }
+      else { await synchronize(group[0]!); group[0]!.error = "Transaction reverted; refresh and retry this order."; if (group[0]!.status !== "skipped") group[0]!.status = "blocked"; await journal.saveEntry(manifest.id, group[0]!); }
       return;
     }
     const finalized = await snapshots(api, group.map(e => e.order.orderId));
@@ -174,7 +174,7 @@ export async function runBulkDelivery(runtime: BulkRuntime, manifest: BulkManife
     const fresh = await snapshots(api, group.map(e => e.order.orderId));
     for (const entry of group) {
       const view = await synchronize(entry, fresh.get(entry.order.orderId)); if (["published", "skipped", "committed"].includes(entry.status) || entry.error?.startsWith("Saved content no longer")) continue;
-      if (!entry.prepared) { update("Restore offer keys & encrypt"); entry.prepared = await runtime.prepare(entry, view); entry.status = "prepared"; await journal.saveEntry(manifest.id, entry, password); }
+      if (!entry.prepared) { update("Restore offer keys & encrypt"); entry.prepared = await runtime.prepare(entry, view); entry.status = "prepared"; await journal.saveEntry(manifest.id, entry); }
       check();
       if (entry.status !== "uploaded") {
         update("Save & upload encrypted content");
@@ -183,21 +183,21 @@ export async function runBulkDelivery(runtime: BulkRuntime, manifest: BulkManife
         if (result.outcome === "active") { if (canonical(result.item) !== canonical(entry.prepared.item)) throw new Error("Uploaded content differs from the saved object."); }
         else if (result.outcome === "not-found") { check(); const uploaded = await service.client.upload(entry.prepared.item); if ("state" in uploaded) throw new Error("Upload is pending. Resume to check the same saved object."); }
         else throw new Error(`Storage ${result.outcome}. Keep the saved object; do not regenerate it.`);
-        check(); entry.status = view.order.state === 2 ? "committed" : "uploaded"; delete entry.error; await journal.saveEntry(manifest.id, entry, password);
+        check(); entry.status = view.order.state === 2 ? "committed" : "uploaded"; delete entry.error; await journal.saveEntry(manifest.id, entry);
       }
     }
     await deliverBatch(group, false);
     await deliverBatch(group, true);
   }
   manifest.complete = entries.every(e => ["published", "skipped"].includes(e.status));
-  await journal.save(manifest, password); update(manifest.complete ? "Delivery complete" : "Some orders need attention");
+  await journal.save(manifest); update(manifest.complete ? "Delivery complete" : "Some orders need attention");
   return entries;
 }
 
 // Cancellation is a separate transaction. Refund batches never touch published orders.
 export async function runBulkRefunds(runtime: BulkRuntime, manifest: BulkManifest, cancelOnly = false) {
-  const { api, journal, password } = runtime;
-  const entries = await Promise.all(manifest.orderIds.map(id => journal.entry(manifest.id, id, password)));
+  const { api, journal } = runtime;
+  const entries = await Promise.all(manifest.orderIds.map(id => journal.entry(manifest.id, id)));
   const check = () => { if (!runtime.current()) throw new Error("Wallet changed. Resume the protected operation."); };
   for (const tx of manifest.transactions.filter(t => ["signing", "checking"].includes(t.status))) await settleTransaction(runtime, manifest, tx);
   const config = (await api.request<{ configuration: { status: number; productKey: string; contract: string; seller: string } }>(`/seller/products/${manifest.productId}/registration`)).configuration;
@@ -218,7 +218,7 @@ export async function runBulkRefunds(runtime: BulkRuntime, manifest: BulkManifes
     else if (![1, 2].includes(view.order.state)) { entry.status = "skipped"; entry.error = "Published order: existing review, dispute and settlement rights preserved."; }
     else if (view.canceled) entry.status = "draft";
     else throw new Error("Cancellation is not finalized yet.");
-    if (canonical(entry) !== before) await journal.saveEntry(manifest.id, entry, password);
+    if (canonical(entry) !== before) await journal.saveEntry(manifest.id, entry);
   }
   async function batch(group: BulkEntry[]): Promise<void> {
     const fresh = await snapshots(api, group.map(e => e.order.orderId));
@@ -236,11 +236,11 @@ export async function runBulkRefunds(runtime: BulkRuntime, manifest: BulkManifes
     } catch (error) { if (!splitError(error) || manifest.transactions.some(t => ["signing", "checking"].includes(t.status))) throw error; failed = true; }
     if (failed) {
       if (group.length > 1) { const half = Math.ceil(group.length / 2); await batch(group.slice(0, half)); await batch(group.slice(half)); }
-      else { const entry = group[0]!; await refresh(entry); if (entry.status === "draft") { entry.status = "blocked"; entry.error = "Refund failed for this recipient. Other refunds can continue; retry this order later."; await journal.saveEntry(manifest.id, entry, password); } }
+      else { const entry = group[0]!; await refresh(entry); if (entry.status === "draft") { entry.status = "blocked"; entry.error = "Refund failed for this recipient. Other refunds can continue; retry this order later."; await journal.saveEntry(manifest.id, entry); } }
     } else { const finalized = await snapshots(api, group.map(e => e.order.orderId)); for (const entry of group) await refresh(entry, finalized.get(entry.order.orderId)); }
   }
   await batch(entries);
   manifest.complete = entries.every(e => ["published", "skipped"].includes(e.status));
-  await journal.save(manifest, password); runtime.update(manifest.complete ? "Refunds complete" : "Some refunds need attention", entries);
+  await journal.save(manifest); runtime.update(manifest.complete ? "Refunds complete" : "Some refunds need attention", entries);
   return entries;
 }

@@ -14,7 +14,7 @@ import type { Operation } from "./purchase-journal";
 import { Feedback, journal, native, prepareOperation, randomId, TransactionPanel, useTask, WalletGate } from "./ui";
 import { OrderDialog } from "./OrderPresentation";
 const initial = { title: "", description: "", visibility: "draft" as const, draftTerms: { token: native, price: "1000000000000000", eventEnd: null as string | null, reviewWindow: null as string | null, commitmentWindow: 600 } };
-type FeePolicy = { serviceFeeBps?: number; offerPlacementFee?: string; placementFeeVersion?: string };
+type FeePolicy = { serviceFeeBps: number; offerPlacementFee: string; placementFeeVersion: string };
 function PublicationInfo({ serviceFeeBps }: { serviceFeeBps?: number }) {
   const [open, setOpen] = useState(false), id = useId(), container = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -104,12 +104,14 @@ export function SellerEditor() {
     // Catalog UUID deterministically identifies this product. It survives lost local state.
     const productKey = `0x${product.id.replaceAll("-", "").padStart(64, "0")}`;
     await api.request(`/seller/products/${product.id}/registration`, { productKey }, "PUT");
-    let action: Parameters<typeof prepareOperation>[2] = kind === "disable" ? { kind, productId: product.id, disabled } : { kind, productId: product.id, receiving: next.receiving! };
-    if (kind === "create" && feePolicy?.offerPlacementFee !== undefined) {
+    let action: Parameters<typeof prepareOperation>[2];
+    if (kind === "create") {
+      if (!feePolicy) throw new Error("Wait for offer fees to load before publishing.");
       const latest = await api.read<FeePolicy>("/platform");
       if (latest.offerPlacementFee !== feePolicy.offerPlacementFee || latest.placementFeeVersion !== feePolicy.placementFeeVersion || latest.serviceFeeBps !== feePolicy.serviceFeeBps) { setFeePolicy(latest); throw new Error("Offer fees changed. Review the updated fee before publishing."); }
-      action = { kind: "create", productId: product.id, receiving: next.receiving!, feeCapBps: feePolicy.serviceFeeBps!, expectedPlacementFee: feePolicy.offerPlacementFee, expectedFeeVersion: feePolicy.placementFeeVersion };
+      action = { kind: "create", productId: product.id, receiving: next.receiving!, feeCapBps: feePolicy.serviceFeeBps, expectedPlacementFee: feePolicy.offerPlacementFee, expectedFeeVersion: feePolicy.placementFeeVersion };
     }
+    else action = kind === "disable" ? { kind, productId: product.id, disabled } : { kind, productId: product.id, receiving: next.receiving! };
     setRecord(await prepareOperation(api, next, action));
     if (visibility) { setStage("transaction"); setPublicationReviewOpen(true); }
   }
@@ -139,7 +141,7 @@ export function SellerEditor() {
       {pendingReview && !access.authenticated && <div className="offer-save-actions"><p>Sign in to save and review this draft.</p><Button variant="secondary" onClick={() => setPendingReview(false)}>Cancel</Button></div>}
       {access.error && <p role="alert">{access.error}</p>}
     </form>}
-    {wizard && stage === "review" && product && <section className="card offer-review"><p className="offer-review-eyebrow">Review your draft</p><OfferReview product={product} defaultReview={defaultReview} />{!confirmed && feePolicy?.offerPlacementFee !== undefined && <div className="offer-review-notes"><p className="offer-review-fee"><Coins aria-hidden="true" />Publishing costs {formatUnits(feePolicy.offerPlacementFee, 18)} MON, paid once.</p></div>}<div className="offer-review-actions"><Button icon={Pencil} variant="secondary" disabled={task.busy} onClick={() => setStage("edit")}>Edit draft</Button><div className="offer-publish-actions"><PublicationInfo serviceFeeBps={feePolicy?.serviceFeeBps} /><div className="offer-visibility-group" role="radiogroup" aria-label="Offer visibility" onKeyDown={event => {
+    {wizard && stage === "review" && product && <section className="card offer-review"><p className="offer-review-eyebrow">Review your draft</p><OfferReview product={product} defaultReview={defaultReview} />{!confirmed && feePolicy !== undefined && <div className="offer-review-notes"><p className="offer-review-fee"><Coins aria-hidden="true" />Publishing costs {formatUnits(feePolicy.offerPlacementFee, 18)} MON, paid once.</p></div>}<div className="offer-review-actions"><Button icon={Pencil} variant="secondary" disabled={task.busy} onClick={() => setStage("edit")}>Edit draft</Button><div className="offer-publish-actions"><PublicationInfo serviceFeeBps={feePolicy?.serviceFeeBps} /><div className="offer-visibility-group" role="radiogroup" aria-label="Offer visibility" onKeyDown={event => {
       if (task.busy || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
       const next = event.key === "Home" ? "hidden" : event.key === "End" ? "public" : visibility === "hidden" ? "public" : "hidden";

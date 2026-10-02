@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, RefreshCw, ShoppingBag } from "lucide-react";
-import { formatUnits, hexlify } from "ethers";
+import { hexlify } from "ethers";
 import { decodeBase64 } from "@zkbytes/sdk";
 import { Button } from "@/components/ui/button";
 import { Confetti, type ConfettiRef } from "@/components/ui/confetti";

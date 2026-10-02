@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSession } from "@/wallet/session-store";
 import { canonical, commitment } from "@/crypto/encoding";
 import { useCommerce, type Action, type OrderView, type Page } from "./client";
-import type { Pending } from "./journal";
+import type { Pending } from "./delivery-state";
 import { openDelivery, prepareDelivery, restoreReceiving, type Opening, type Order, type Service } from "./protocol";
 import { deliveryRecord, protocolOrder, reference, storageService, type ChainRecord } from "./lifecycle";
 import { Feedback, journal, prepareOperation, randomId, TransactionPanel, useTask } from "./ui";
@@ -29,7 +29,6 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
   const [operation, setOperation] = useState<Operation>(), [notice, setNotice] = useState("");
   const [composer, setComposer] = useState(false), [messageReviewOpen, setMessageReviewOpen] = useState(false), [arbitrationReviewOpen, setArbitrationReviewOpen] = useState(false), [deliveryReviewOpen, setDeliveryReviewOpen] = useState(false), [reviewing, setReviewing] = useState(false), [deliveryDialogOpen, setDeliveryDialogOpen] = useState(false), [caseOpen, setCaseOpen] = useState(role === "arbitrator"), [hasSaved, setHasSaved] = useState(false);
   const deliverySession = useRef(new DeliverySession());
-  const credential = () => "";
   const [autoPublish, setAutoPublish] = useState(false);
   const account = wallet.session!.address.toLowerCase(), participant = [view.order.buyer, view.order.seller].includes(account);
   const isDelivery = pending?.record.kind === "delivery" || (view.order.state <= 2 && account === view.order.seller);
@@ -73,7 +72,7 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
       const selectedService = storageService(await api.read(`/storage-service?id=${service.id}&prepare=true`));
       const prepared = await prepareDelivery({ order, payload: { text, tickets: [] }, kind, turn, signer: session, service: selectedService, latestPublicationSeconds: current.order.state === 2 ? BigInt(current.order.publicationDeadline) : BigInt(Math.max(current.block.timestamp, Math.floor(Date.now() / 1000))) + BigInt(current.order.terms.commitmentWindow), isCurrent, offerKeys });
       if (!isCurrent() || !live.current) throw new Error("Wallet changed.");
-      await recovery.prepare(prepared, credential(), isCurrent);
+      await recovery.prepare(prepared, isCurrent);
       if (isCurrent() && live.current) { setPending(preparedPending(prepared)); setPendingKey(key); }
     };
     if (kind === "delivery") await wallet.runOfferKeysOperation(order.seller.context, order.seller.publicKey, (keys, session, current) => prepare(session, current, keys));
@@ -85,25 +84,25 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
     if (!order) return false;
     const key = pendingKey || recoveryId(order, "delivery", "0", account);
     const published = records.find(row => pending ? row.turn === pending.record.turn && row.commitment === pending.recordHash : row.turn === "0");
-    if (!published || !await recovery.cleanupConfirmed(key, published.commitment, credential())) return false;
+    if (!published || !await recovery.cleanupConfirmed(key, published.commitment)) return false;
     if (live.current) { setPending(undefined); setHasSaved(false); setText(""); setComposer(false); deliverySession.current.clear(); }
     return true;
   }
   async function continueDelivery(automaticallyPublish = false, prepared = pending, key = pendingKey) {
     if (!prepared || !service || !order) throw new Error("Unlock the saved draft first.");
     if ((await journal.list(account)).some(o => o.orderId === view.orderId && o.deployment.chainId === order.deployment.chainId && o.deployment.contract.toLowerCase() === order.deployment.contract.toLowerCase() && o.progress === "checking")) throw new Error("Check the pending transaction before continuing this draft.");
-    let p = await recovery.restore(key, credential());
+    let p = await recovery.restore(key);
     if (canonical(p.record.order) !== canonical(order) || p.record.sender !== account) throw new Error("Draft belongs to another order or wallet.");
     const current = () => live.current;
     const savedService = storageService(await api.read(`/storage-service?id=${p.record.serviceId}`));
-    if (p.progress === "prepared") await recovery.upload(key, credential(), savedService.client, current);
-    p = await recovery.restore(key, credential());
+    if (p.progress === "prepared") await recovery.upload(key, savedService.client, current);
+    p = await recovery.restore(key);
     if (p.progress === "upload-uncertain") {
-      const outcome = await recovery.recoverUpload(key, credential(), savedService.client, current);
-      if (outcome === "not-found") await recovery.upload(key, credential(), savedService.client, current);
+      const outcome = await recovery.recoverUpload(key, savedService.client, current);
+      if (outcome === "not-found") await recovery.upload(key, savedService.client, current);
       else if (outcome !== "active") throw new Error(p.record.kind === "message" ? `Storage status: ${outcome}. Try sending the message again.` : `Storage status: ${outcome}. Keep this draft; do not prepare a replacement.`);
     }
-    p = await recovery.restore(key, credential()); setPending(p);
+    p = await recovery.restore(key); setPending(p);
     const fresh = await api.request<OrderView>(`/orders/${view.orderId}`);
     const existing = await api.request<Page<ChainRecord>>(`/orders/${view.orderId}/records?after=${BigInt(p.record.turn) - 1n}&limit=1`);
     if (existing.items.some(row => row.turn === p.record.turn && row.commitment === p.recordHash)) {
@@ -122,7 +121,7 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
       return;
     }
     if (fresh.order.state === 1) {
-      if (p.progress === "uploaded") await recovery.update(key, credential(), "tx1-pending");
+      if (p.progress === "uploaded") await recovery.update(key, "tx1-pending");
       await prepareAction({ kind: "reserveDelivery", orderId: view.orderId });
     } else if (fresh.order.state === 2) {
       let hash = p.tx1;
@@ -143,14 +142,14 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
       }
       const reviewStart = Math.max(Number(fresh.order.terms.eventEnd), Math.floor(Date.now() / 1000), fresh.block.timestamp);
       if ((reviewStart + Number(fresh.order.terms.reviewWindow)) * 1000 >= Date.parse(p.record.expiresAt)) throw new Error("Delivery no longer covers the promised review period.");
-      if (["uploaded", "tx1-pending"].includes(p.progress)) { await recovery.update(key, credential(), "tx1-pending", hash); await recovery.update(key, credential(), "tx1-finalized"); }
-      p = await recovery.restore(key, credential());
-      if (p.progress === "tx1-finalized") await recovery.update(key, credential(), "tx2-pending");
+      if (["uploaded", "tx1-pending"].includes(p.progress)) { await recovery.update(key, "tx1-pending", hash); await recovery.update(key, "tx1-finalized"); }
+      p = await recovery.restore(key);
+      if (p.progress === "tx1-finalized") await recovery.update(key, "tx2-pending");
       await prepareAction({ kind: "publishDelivery", orderId: view.orderId, reference: reference(p.record), reservationTransaction: hash });
       setAutoPublish(automaticallyPublish);
       setNotice("Reservation finalized. Approve publication now, before the fixed deadline. Delivery is not complete until publication finalizes.");
     } else throw new Error("This draft cannot be published in the current order state. Check refund eligibility.");
-    setPending(await recovery.restore(key, credential()));
+    setPending(await recovery.restore(key));
   }
   async function finalized() {
     await refresh();

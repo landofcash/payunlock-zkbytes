@@ -4,7 +4,6 @@ import { Wallet } from "ethers";
 import { clearItemKeys, encodeBase64, decryptStorageItem } from "@zkbytes/sdk";
 import { newOfferReceivingContext, newReceivingContext, restoreReceiving, restoreReceivingKeys, prepareDelivery, openDelivery, type Order, type PreparedDelivery } from "../commerce/protocol";
 import { deliveryRecord, reference } from "../commerce/lifecycle";
-import { FulfillmentJournal } from "../commerce/journal";
 
 const deployment = { chainId: 10143 as const, contract: `0x${"12".repeat(20)}` };
 const offerId = "58c2aa55-6962-4390-b90e-86f4a5144eb6";
@@ -45,16 +44,7 @@ it("prepares 30 separate orders with one offer signature, restores seller access
       const p = deliveries[0]!;
       const service = { id: 1, maxRetentionSeconds: 0, client: { downloadAndVerify: async () => p.item } as never };
       expect(await openDelivery({ record: p.record, expectedRecordHash: p.recordHash, order: p.record.order, role: "seller", privateKey: restored.privateKey, services: [service], isCurrent: current })).toEqual(p.opening);
-      const records = new Map<string, unknown>();
-      const store = { get: async (id: string) => records.get(id), put: async (id: string, value: unknown) => { records.set(id, value); }, remove: async (id: string) => { records.delete(id); }, compareAndSwap: async (id: string, before: unknown, next: unknown) => { expect(records.get(id)).toEqual(before); records.set(id, next); } };
-      const journal = new FulfillmentJournal(store);
-      const id = await journal.prepare(p, "a strong test passphrase", current);
-      const backup = await journal.export(id);
-      records.clear();
-      await journal.import(backup, "a strong test passphrase");
-      expect((await journal.restore(id, "a strong test passphrase")).item).toEqual(p.item);
       expect(signer.signMessage).toHaveBeenCalledOnce();
-      expect(backup).not.toContain(p.item.seed);
     } finally { restored.privateKey.fill(0); }
   } finally { clearItemKeys(keys); identities.forEach(b => b.privateKey.fill(0)); }
 }, 20000);
