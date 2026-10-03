@@ -39,16 +39,21 @@ it("defaults to covered fees, allows switching both ways and keeps one confirmat
   expect(screen.getAllByRole("button", { name: "Confirm refund" })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Sign action for a relayer" })).not.toBeInTheDocument();
   fireEvent.click(toggle);
-  await waitFor(() => expect(toggle).toBeChecked());
+  await waitFor(() => { expect(toggle).toBeChecked(); expect(toggle).toBeEnabled(); });
   expect(screen.getByText("Maximum network fee")).toBeInTheDocument();
   expect(screen.getByText("0.000021 MON")).toBeInTheDocument();
   expect(screen.getByText("Transaction details").closest("details")).not.toHaveAttribute("open");
   fireEvent.click(toggle);
-  await waitFor(() => expect(toggle).not.toBeChecked());
+  await waitFor(() => { expect(toggle).not.toBeChecked(); expect(toggle).toBeEnabled(); });
   expect(screen.queryByText("Maximum network fee")).not.toBeInTheDocument();
   expect(mocks.signed).not.toHaveBeenCalled(); expect(mocks.sent).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  expect(screen.getByText("Dialog closed")).toBeInTheDocument();
+  const cancel = screen.getByRole("button", { name: "Cancel" });
+  await waitFor(() => {
+    expect(cancel).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Close dialog" })).toBeEnabled();
+  });
+  fireEvent.click(cancel);
+  expect(await screen.findByText("Dialog closed")).toBeInTheDocument();
 });
 it("uses the signature path for the covered-fee confirmation", async () => {
   mount(); await screen.findByText("Network fee covered.");
