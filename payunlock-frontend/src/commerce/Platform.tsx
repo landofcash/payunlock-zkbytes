@@ -1,6 +1,7 @@
 import { Check as CheckIcon, KeyRound, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { formatEther, formatUnits, id, isAddress, parseEther, parseUnits, ZeroAddress } from "ethers";
 import { useSession } from "@/wallet/session-store";
 import { useCommerce, type Action, type Deployment, type OrderView } from "./client";
@@ -126,7 +127,7 @@ export function Platform() {
 
       {claimCard && (isTreasury ? <section className="platform-group" aria-labelledby="treasury-fees"><h2 id="treasury-fees">Treasury</h2>{claimCard}</section> : <details className="platform-group platform-past-fees"><summary>Claim past treasury fees</summary>{claimCard}</details>)}
 
-      {isOwner && <section className="platform-group" aria-labelledby="administration"><h2 id="administration">Platform administration</h2><p className="muted">Changes to these settings are recorded on-chain.</p>
+      {isOwner && <section className="platform-group" aria-labelledby="administration"><h2 id="administration">Platform administration</h2><Button asChild variant="secondary"><Link to="/admin/featured">Manage featured offers</Link></Button><p className="muted">Changes to the settings below are recorded on-chain.</p>
         <div className="card platform-card"><h3>Payments and fees</h3>
           {deployment?.router && <>
             <p>Service fees are deducted from seller proceeds; buyer refunds return the full principal. Placement fees are paid in MON when an offer is published.</p>

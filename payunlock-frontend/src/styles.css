@@ -920,3 +920,9 @@ body .transaction-review-footer .ui-button { margin: 0; min-height: 42px; }
 
 .offer-visual-summary{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:2rem;align-items:start}.offer-summary-copy{min-width:0}.offer-visual-summary .offer-review-heading{flex-wrap:wrap}@media(max-width:760px){.offer-visual-summary{grid-template-columns:1fr;gap:.5rem}}
 .offer-gallery-main { border: 0; }
+/* Homepage curation uses the existing card and button styles. */
+.featured-admin-list { padding: 0; list-style: none; grid-template-columns: repeat(auto-fill, minmax(min(100%, 312px), 1fr)); }
+.featured-admin-item { display: flex; flex-direction: column; width: min(100%, 312px); justify-self: center; }
+.featured-admin-item > .offer-card { flex: 1; }
+.featured-admin-list .actions { margin-top: .75rem; justify-content: center; }
+.offer-admin { margin-top: 1.5rem; }

@@ -77,7 +77,7 @@ it.each([ ["Public", "public"], ["Private", "hidden"] ])("saves a draft, reviews
   expect(mocks.prepare).not.toHaveBeenCalled();
    fireEvent.click(publish);
    expect(await screen.findByRole("heading", { name: "Review transaction and results" })).toBeInTheDocument();
-   const confirmation = screen.getByRole("dialog", { name: "Publish offer" });
+   const confirmation = await screen.findByRole("dialog", { name: "Publish offer" });
    expect(confirmation).toHaveTextContent("Simulate confirmation");
    expect(product.visibility).toBe("draft");
   registered = true; fireEvent.click(screen.getByRole("button", { name: "Simulate confirmation" }));

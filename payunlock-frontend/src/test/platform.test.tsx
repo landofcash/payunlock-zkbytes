@@ -1,3 +1,4 @@
+import { MemoryRouter } from "react-router-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ZeroAddress } from "ethers";
@@ -27,20 +28,20 @@ beforeEach(() => {
 });
 
 it("shows treasury claims only to the treasury and prefills readable settings for the owner", async () => {
-  const view = render(<Platform />);
+  const view = render(<Platform />, { wrapper: MemoryRouter });
   await screen.findByRole("heading", { name: "Platform administration" });
   expect(screen.queryByRole("heading", { name: "Treasury" })).not.toBeInTheDocument();
   expect(screen.getByLabelText("Service fee (%)")).toHaveValue("2.5");
   expect(screen.getByLabelText("New placement fee (MON)")).toHaveValue("0.1");
   view.unmount();
   mocks.account = treasury;
-  render(<Platform />);
+  render(<Platform />, { wrapper: MemoryRouter });
   await screen.findByRole("heading", { name: "Treasury" });
   expect(screen.queryByRole("heading", { name: "Platform administration" })).not.toBeInTheDocument();
 });
 
 it("shows one action-scoped change summary when saving a setting", async () => {
-  render(<Platform />);
+  render(<Platform />, { wrapper: MemoryRouter });
   const field = await screen.findByLabelText("Service fee (%)");
   fireEvent.change(field, { target: { value: "3" } });
   fireEvent.click(screen.getByRole("button", { name: "Save service fee" }));
@@ -52,7 +53,7 @@ it("shows one action-scoped change summary when saving a setting", async () => {
 
 it("uses the order's recorded arbitration fee asset when displaying a replacement", async () => {
   mocks.request.mockResolvedValue({ assignmentFeeAsset: usdc, assignment: { wallet: owner, revision: "2", fee: "1500000" } });
-  render(<Platform />);
+  render(<Platform />, { wrapper: MemoryRouter });
   fireEvent.change(await screen.findByLabelText("Order number"), { target: { value: "42" } });
   fireEvent.click(screen.getByRole("button", { name: "Load assignment" }));
   expect(await screen.findByText(/original fee 1\.5 USDC/)).toBeInTheDocument();

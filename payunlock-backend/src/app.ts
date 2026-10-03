@@ -12,7 +12,7 @@ export function buildApp(config: Config, dependencies: Omit<CommerceOptions, "co
   app.setSerializerCompiler(serializerCompiler);
   app.register(cors, {
     origin: config.API_ORIGINS,
-    methods: ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Authorization", "Content-Type"],
     credentials: false,
   });

@@ -21,6 +21,12 @@ Earlier V4 live Monad Testnet checks passed for delivery, both-party access reco
 
 Order history now synchronizes with the deployed contracts. Tests also verify wallet sign-in, seller-only catalog editing, purchase recovery, and recovery from a changed blockchain history.
 
+The homepage's Top Offers are selected by the platform administrator (the current escrow contract owner). On an offer's details page, sign in with that wallet to add or remove it from featured offers, or restrict its presentation. Use **Platform administration → Manage featured offers** (`/admin/featured`) to move selected offers up or down, remove them, and save the list. Only public, unrestricted offers appear on the homepage; Discover lists the other public, unrestricted offers.
+
+Restricted offers remain accessible through direct links and existing orders, with placeholder text and image URLs. Checkout, fulfillment, refunds, and arbitration retain their existing rules. Original metadata and images are preserved, and original direct image URLs remain accessible. Restricting an offer removes its featured selection; removing the restriction does not automatically feature it again. Run `pnpm db:migrate` before starting the updated API.
+
+Administrators can review original restricted content through **Restricted Offers** in the wallet menu (`/admin/restricted`). Cards open `/admin/offers/:id`, showing original images and text, current sale terms when available, and a Remove restriction action. The regular masked offer page also includes an admin-only View original details link. Original metadata endpoints require the authenticated current contract owner; images use their existing public URLs.
+
 ## Run the preview
 
 Requires Node **24.11.0**, pnpm **11.27.0**, and Docker with Linux containers running.

@@ -15,6 +15,7 @@ import { newReceivingContext, restoreReceiving } from "./protocol";
 import type { Operation } from "./purchase-journal";
 import { Feedback, journal, native, prepareOperation, randomId, TransactionPanel, useTask } from "./ui";
 import { OfferGallery } from "./OfferImages";
+import { OfferAdmin } from "./FeaturedAdmin";
 import { OrderDialog } from "./OrderPresentation";
 import { assertPurchaseSignature, buildPurchaseAuthorization } from "./token-authorization";
 import { purchaseMatches } from "./purchase-journal";
@@ -74,6 +75,7 @@ export function ProductPage() {
       <section className="card offer-review">{preview ? <><OfferReview product={summary(product, preview.configuration)} publicPreview assetDetails={preview.asset} seller={preview.configuration.seller} />{!available && <p className="offer-availability" role="status">{preview.configuration.status !== 1 ? "Sales paused" : "This payment token is currently unavailable"}</p>}</> : <><OfferGallery images={product.images ?? []} title={product.title} /><h2>{product.title}</h2><p>{product.description}</p><p role={previewError ? "alert" : "status"}>{previewError || "Checking price and availability..."}</p>{previewError && <Button icon={RefreshCw} onClick={() => setAttempt(value => value + 1)}>Retry</Button>}</>}
       <div className="offer-buy-actions"><Button icon={ShoppingBag} className="rainbow-button" disabled={!available} onClick={() => showCheckout(true)}>Buy</Button></div>
       </section>
+      <OfferAdmin product={product} onChange={setProduct} />
     </>}
   </section>;
 }

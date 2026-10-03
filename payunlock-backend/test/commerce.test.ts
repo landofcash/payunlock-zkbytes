@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { Client } from "pg";
-import { Wallet, Transaction } from "ethers";
+import { Wallet, Transaction, Result } from "ethers";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
@@ -34,7 +34,7 @@ describe.skipIf(process.env.PAYUNLOCK_DB_TEST !== "1")("commerce API with isolat
     await admin.query(`CREATE SCHEMA ${schema}`);
     await admin.query(`SET search_path TO ${schema}`);
     const require = createRequire(import.meta.url);
-    for (const file of ["202609240001_foundation.cjs", "202609250001_application.cjs", "202609250002_checkout_reviews.cjs", "202609260001_deployment_scope.cjs", "202609280001_offer_images.cjs"]) {
+    for (const file of ["202609240001_foundation.cjs", "202609250001_application.cjs", "202609250002_checkout_reviews.cjs", "202609260001_deployment_scope.cjs", "202609280001_offer_images.cjs", "202610030001_offer_moderation.cjs"]) {
       if (file.includes("foundation")) continue;
       await require(`../migrations/${file}`).up({ sql: (sql: string) => admin.query(sql) });
     }
@@ -108,7 +108,7 @@ describe.skipIf(process.env.PAYUNLOCK_DB_TEST !== "1")("commerce API with isolat
     const registration = await app.inject({ method: "PUT", url: `/v1/seller/products/${productId}/registration`, headers: sellerAuth, payload: { productKey: key } });
     expect(registration.json().status).toBe("finalized");
     const discovered = await app.inject("/v1/products");
-    expect(discovered.json().items).toEqual([{ id: productId, title: draft.title, description: draft.description, images: [], revision: 1, sale: { status: "unavailable" } }]);
+    expect(discovered.json().items).toEqual([{ id: productId, title: draft.title, description: draft.description, images: [], revision: 1, restricted: false, frontpagePosition: null, sale: { status: "unavailable" } }]);
     expect(discovered.body).not.toContain(escrowAddress);
     expect(discovered.body).not.toContain(key);
     expect(discovered.body).not.toContain("draftTerms");
@@ -271,6 +271,65 @@ describe.skipIf(process.env.PAYUNLOCK_DB_TEST !== "1")("commerce API with isolat
     const result2 = await app.inject({ method: "PUT", url: `/v1/seller/products/${productId}/registration`, headers: sellerAuth, payload: { productKey: key } });
     expect(result2.json().status).toBe("uncertain");
     expect((await app.db.query("SELECT count(*)::int AS count FROM product_mappings WHERE chain_id=$1", [deployment.chainId])).rows[0].count).toBe(1);
+  });
+  it("authorizes moderation, masks current and historical offers, and keeps checkout and refund paths usable", async () => {
+    const call = vi.spyOn(chain, "call").mockResolvedValue(Result.fromItems([other.address.toLowerCase()]));
+    const canonical = vi.spyOn(chain, "ensureCanonical").mockResolvedValue();
+    try {
+      expect((await app.inject({ url: "/v1/admin/featured", headers: { origin }, remoteAddress: "127.0.0.77" })).statusCode).toBe(401);
+      expect((await app.inject({ url: "/v1/admin/featured", headers: sellerAuth, remoteAddress: "127.0.0.77" })).statusCode).toBe(403);
+      const state = (await app.inject({ url: `/v1/admin/products/${productId}`, headers: otherAuth, remoteAddress: "127.0.0.77" })).json();
+      expect((await app.inject({ method: "PATCH", url: `/v1/admin/products/${productId}`, headers: sellerAuth, remoteAddress: "127.0.0.77", payload: { expectedVersion: state.version, restricted: true } })).statusCode).toBe(403);
+      expect((await app.inject({ method: "PUT", url: "/v1/admin/featured", headers: sellerAuth, remoteAddress: "127.0.0.77", payload: { expectedVersion: state.version, ids: [] } })).statusCode).toBe(403);
+      const existing = (await app.inject({ url: `/v1/seller/products/${productId}`, headers: sellerAuth, remoteAddress: "127.0.0.77" })).json();
+      const bytes = await sharp({ create: { width: 32, height: 20, channels: 3, background: "green" } }).png().toBuffer();
+      const image = (await app.inject({ method: "POST", url: "/v1/seller/images", headers: { ...sellerAuth, "content-type": "application/octet-stream" }, remoteAddress: "127.0.0.77", payload: bytes })).json();
+      expect((await app.inject({ method: "PUT", url: `/v1/seller/products/${productId}`, headers: sellerAuth, remoteAddress: "127.0.0.77", payload: { ...draft, title: existing.title, description: existing.description, images: [image], expectedRevision: existing.revision } })).statusCode).toBe(200);
+      const originalMedia = (await app.inject(image.url)).rawPayload;
+      const feature = await app.inject({ method: "PATCH", url: `/v1/admin/products/${productId}`, headers: otherAuth, remoteAddress: "127.0.0.77", payload: { expectedVersion: state.version, featured: true } });
+      expect(feature.statusCode).toBe(200);
+      const featuredItems = (await app.inject("/v1/products/featured")).json().items;
+      expect(featuredItems.map((p: { id: string }) => p.id)).toEqual([productId]);
+      expect((await app.inject({ url: "/v1/admin/featured", headers: otherAuth, remoteAddress: "127.0.0.77" })).json().items).toEqual(featuredItems);
+      const original = (await app.inject(`/v1/products/${productId}`)).json();
+      const restriction = await app.inject({ method: "PATCH", url: `/v1/admin/products/${productId}`, headers: otherAuth, remoteAddress: "127.0.0.77", payload: { expectedVersion: feature.json().version, restricted: true } });
+      expect(restriction.statusCode).toBe(200); expect(restriction.json().frontpagePosition).toBeNull();
+      expect((await app.inject("/v1/products/featured")).json().items).toEqual([]);
+      expect((await app.inject("/v1/products")).json().items.map((p: { id: string }) => p.id)).not.toContain(productId);
+      const masked = (await app.inject(`/v1/products/${productId}`)).json();
+      expect(masked).toMatchObject({ title: "Restricted offer", restricted: true });
+      expect(masked.images[0].url).toBe("/v1/media/restricted");
+      expect((await app.inject(image.url)).rawPayload).toEqual(originalMedia);
+      for (const url of ["/v1/admin/restricted", `/v1/admin/products/${productId}/original`]) {
+        expect((await app.inject({ url, headers: { origin }, remoteAddress: "127.0.0.77" })).statusCode).toBe(401);
+        expect((await app.inject({ url, headers: sellerAuth, remoteAddress: "127.0.0.77" })).statusCode).toBe(403);
+      }
+      const restrictedList = await app.inject({ url: "/v1/admin/restricted?limit=1", headers: otherAuth, remoteAddress: "127.0.0.77" });
+      expect(restrictedList.statusCode).toBe(200);
+      expect(restrictedList.json()).toMatchObject({ items: [{ id: productId, title: original.title, description: original.description, images: original.images }], nextCursor: null });
+      expect(restrictedList.headers["cache-control"]).toBe("no-store");
+      const originalDetails = await app.inject({ url: `/v1/admin/products/${productId}/original`, headers: otherAuth, remoteAddress: "127.0.0.77" });
+      expect(originalDetails.statusCode).toBe(200);
+      expect(originalDetails.json()).toMatchObject({ version: restriction.json().version, product: { title: original.title, description: original.description, images: original.images, restricted: true, seller: seller.address.toLowerCase() }, preview: { configuration: { terms: { price: "1000" } }, asset: { symbol: "MON" } } });
+      vi.mocked(chain.configuration).mockRejectedValueOnce(new ApiError(503, "CHAIN_UNAVAILABLE"));
+      expect((await app.inject({ url: `/v1/admin/products/${productId}/original`, headers: otherAuth, remoteAddress: "127.0.0.77" })).json()).toMatchObject({ product: { title: original.title, images: original.images }, preview: null });
+      expect((await app.inject(`/v1/products/${productId}?original=true`)).json().title).toBe("Restricted offer");
+      expect((await app.inject(masked.images[0].url)).headers["content-type"]).toContain("image/svg+xml");
+      expect((await app.inject({ url: "/v1/orders/1", headers: buyerAuth, remoteAddress: "127.0.0.77" })).json()).toMatchObject({ offer: { title: "Restricted offer", restricted: true }, eligibility: { claimRefund: true } });
+      expect((await app.inject("/v1/public/orders/1")).json().offer.title).toBe("Restricted offer");
+      expect((await app.inject(`/v1/products/${productId}/preview`)).statusCode).toBe(200);
+      const checkout = await app.inject({ method: "POST", url: `/v1/products/${productId}/checkout`, headers: buyerAuth, remoteAddress: "127.0.0.77", payload: { requestId: `0x${"88".repeat(32)}`, buyerReceiving: receiving } });
+      expect(checkout.statusCode).toBe(200);
+      const own = (await app.inject({ url: `/v1/seller/products/${productId}`, headers: sellerAuth, remoteAddress: "127.0.0.77" })).json();
+      const save = await app.inject({ method: "PUT", url: `/v1/seller/products/${productId}`, headers: sellerAuth, remoteAddress: "127.0.0.77", payload: { ...draft, title: "Attempted overwrite", images: masked.images, expectedRevision: own.revision } });
+      expect(save.statusCode).toBe(200); expect(save.json().title).toBe("Restricted offer");
+      expect((await app.db.query("SELECT title,description,restricted,images FROM catalog_products WHERE id=$1", [productId])).rows[0]).toMatchObject({ title: original.title, description: original.description, restricted: true, images: original.images });
+      const unrestrict = await app.inject({ method: "PATCH", url: `/v1/admin/products/${productId}`, headers: otherAuth, remoteAddress: "127.0.0.77", payload: { expectedVersion: restriction.json().version, restricted: false } });
+      expect(unrestrict.statusCode).toBe(200); expect(unrestrict.json().frontpagePosition).toBeNull();
+      expect((await app.inject(`/v1/products/${productId}`)).json().title).toBe(original.title);
+      expect((await app.inject(`/v1/products/${productId}`)).json().images).toEqual(original.images);
+      expect((await app.inject({ url: "/v1/admin/restricted", headers: otherAuth, remoteAddress: "127.0.0.77" })).json().items).toEqual([]);
+    } finally { call.mockRestore(); canonical.mockRestore(); }
   });
   it("excludes abandoned deployment catalogs and pending operations without deleting them", async () => {
     await app.db.query("UPDATE catalog_products SET deployment_scope='abandoned' WHERE id=$1", [productId]);

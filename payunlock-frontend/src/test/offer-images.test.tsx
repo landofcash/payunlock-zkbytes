@@ -5,6 +5,11 @@ vi.mock("@/commerce/client", async importOriginal => ({ ...await importOriginal<
 import { OfferGallery, OfferImageEditor, validateOfferImages } from "@/commerce/OfferImages";
 import { MediaOriginContext, type OfferImage } from "@/commerce/client";
 const images: OfferImage[] = ["one", "two", "three"].map(id => ({ id, url: `/v1/media/${id}/image`, thumbnailUrl: `/v1/media/${id}/thumbnail`, width: 100, height: 100 }));
+it("renders restricted placeholder URLs without enlargement controls", () => {
+  render(<MediaOriginContext.Provider value="https://api.example.test"><OfferGallery images={[{ ...images[0]!, url: "/v1/media/restricted", thumbnailUrl: "/v1/media/restricted" }]} title="Restricted offer" /></MediaOriginContext.Provider>);
+  expect(screen.getByRole("img", { name: "Restricted offer" })).toHaveAttribute("src", "https://api.example.test/v1/media/restricted");
+  expect(screen.queryByRole("button", { name: "Enlarge offer image" })).not.toBeInTheDocument();
+});
 it("accepts 15 MB images and rejects larger files, unsupported types and excess count", () => {
   const file = new File([new Uint8Array(15 * 1024 * 1024)], "cover.png", { type: "image/png" });
   expect(() => validateOfferImages([file], 7)).not.toThrow();

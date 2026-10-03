@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { Eye, KeyRound, LockKeyhole, Plus, ShieldCheck, Trash2, Upload, Wallet, Scale, SlidersHorizontal, Check, Network, X, LogOut, ExternalLink } from "lucide-react";
+import { Eye, KeyRound, LockKeyhole, Plus, ShieldCheck, Trash2, Upload, Wallet, Scale, SlidersHorizontal, Check, Network, X, LogOut, ExternalLink, Star } from "lucide-react";
 import { RecoveryBackup, RecoveryWarning } from "./RecoveryBackup";
 import { WalletBalances } from "./WalletBalances";
 import { AccountName } from "./AccountName";
@@ -18,6 +18,7 @@ import { PASSKEY_ACCOUNTS_EVENT, PASSKEY_ACCOUNTS_KEY, rememberPasskeyAccount, s
 import { useApproval } from "./ApprovalProvider";
 import { useSession } from "./session-store";
 import { useCommerceAccess } from "@/commerce/client";
+import { useAdministrator } from "@/commerce/FeaturedAdmin";
 import { reownProjectId } from "@/config/reown";
 import metamaskLogo from "@/assets/metamask.svg";
 import walletConnectLogo from "@/assets/walletconnect.svg";
@@ -30,6 +31,7 @@ const short = (address: string) => `${address.slice(0, 8)}...${address.slice(-6)
 export function WalletMenu() {
   const wallet = useSession(), approve = useApproval();
   const access = useCommerceAccess();
+  const admin = useAdministrator();
   const [address, setAddress] = useState<string | null>(null), [accounts, setAccounts] = useState<string[]>([]), [loading, setLoading] = useState(true);
   const [passkeyAccounts, setPasskeyAccounts] = useState(savedPasskeyAccounts);
   const [accountNames, setAccountNames] = useState(savedAccountNames);
@@ -162,7 +164,7 @@ export function WalletMenu() {
             <p className="wallet-status-label">Status</p><p className="wallet-account-status">{["0x279f", "10143"].includes(wallet.session.chainId ?? "") ? "Connected" : "Switch network to continue"}</p>
             <Button asChild variant="link"><a href={`https://testnet.monadvision.com/address/${wallet.session.address}`} target="_blank" rel="noopener noreferrer"><ExternalLink aria-hidden="true" />View on explorer</a></Button>
           </div>
-          <div className="wallet-account-navigation"><Button asChild variant="ghost"><Link to="/arbitration" onClick={() => panel.current?.hidePopover()}><Scale aria-hidden="true" />Arbitration</Link></Button><Button asChild variant="ghost"><Link to="/platform" onClick={() => panel.current?.hidePopover()}><SlidersHorizontal aria-hidden="true" />Settings</Link></Button></div>
+          <div className="wallet-account-navigation"><Button asChild variant="ghost"><Link to="/arbitration" onClick={() => panel.current?.hidePopover()}><Scale aria-hidden="true" />Arbitration</Link></Button><Button asChild variant="ghost"><Link to="/platform" onClick={() => panel.current?.hidePopover()}><SlidersHorizontal aria-hidden="true" />Settings</Link></Button>{admin.isAdmin && !wallet.session.locked && <><Button asChild variant="ghost"><Link to="/admin/featured" onClick={() => panel.current?.hidePopover()}><Star aria-hidden="true" />Top Offers</Link></Button><Button asChild variant="ghost"><Link to="/admin/restricted" onClick={() => panel.current?.hidePopover()}><ShieldCheck aria-hidden="true" />Restricted Offers</Link></Button></>}</div>
         </section>
         <section className="wallet-popover-actions" aria-label="Wallet actions">
           <WalletBalances key={wallet.session.address} address={wallet.session.address} />

@@ -19,6 +19,8 @@ describe("foundation API", () => {
           ["PUT", "/v1/seller/products/58c2aa55-6962-4390-b90e-86f4a5144eb6/registration"],
           ["PUT", "/v1/seller/products/58c2aa55-6962-4390-b90e-86f4a5144eb6"],
           ["DELETE", "/v1/pending/58c2aa55-6962-4390-b90e-86f4a5144eb6"],
+          ["PATCH", "/v1/admin/products/8c98d9ef-6b1f-45f5-84f6-ace8035fe071"],
+          ["PUT", "/v1/admin/featured"],
         ]) {
           const response = await app.inject({ method: "OPTIONS", url, headers: {
             origin, "access-control-request-method": method!, "access-control-request-headers": "authorization,content-type" } });

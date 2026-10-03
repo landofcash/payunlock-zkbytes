@@ -11,6 +11,7 @@ it("validates API responses and shows the catalog without signing", async () => 
   render(<MemoryRouter><SessionProvider><App apiOrigin="http://127.0.0.1:4321" /></SessionProvider></MemoryRouter>);
   expect(await screen.findByText("Connected")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Top Offers" })).toBeInTheDocument();
+  expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:4321/v1/products/featured", expect.anything());
   expect(screen.queryByRole("button", { name: /buy|pay|connect wallet/i })).not.toBeInTheDocument();
 });
 it("shows API failure without breaking navigation", async () => {

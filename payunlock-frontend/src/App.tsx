@@ -15,6 +15,8 @@ import { Platform } from "./commerce/Platform";
 import { useSession } from "./wallet/session-store";
 import { SellerMenu } from "./app/SellerMenu";
 import { Discover } from "./commerce/Discover";
+import { FeaturedAdmin } from "./commerce/FeaturedAdmin";
+import { RestrictedAdmin, RestrictedOfferPage } from "./commerce/RestrictedAdmin";
 const WalletMenu = lazy(() => import("./wallet/WalletPage").then(module => ({ default: module.WalletMenu })));
 
 export function App({ apiOrigin, walletsEnabled = false }: { apiOrigin: string; walletsEnabled?: boolean }) {
@@ -52,6 +54,9 @@ function AppShell({ apiOrigin, walletsEnabled }: { apiOrigin: string; walletsEna
       <Route path="/offers" element={<MyOffers />} />
       <Route path="/arbitration" element={<Orders role="arbitrator" />} />
       <Route path="/platform" element={<Platform />} />
+      <Route path="/admin/featured" element={<ProtectedAccess label="Manage featured offers"><FeaturedAdmin /></ProtectedAccess>} />
+      <Route path="/admin/restricted" element={<ProtectedAccess label="Review restricted offers"><RestrictedAdmin /></ProtectedAccess>} />
+      <Route path="/admin/offers/:id" element={<ProtectedAccess label="View original offer details"><RestrictedOfferPage /></ProtectedAccess>} />
       <Route path="/products/:id" element={<ProductPage />} />
       <Route path="/create" element={<SellerEditor />} />
       <Route path="/sales/products/:id" element={<ProtectedAccess label="Manage offer"><SellerEditor /></ProtectedAccess>} />

@@ -90,6 +90,7 @@ export function OfferGallery({ images, title }: { images: OfferImage[]; title: s
   useEffect(() => { setSelected(0); setZoom(false); }, [images.map(i => i.id).join(",")]);
   function select(next: number) { setSelected((next + images.length) % images.length); setZoom(false); }
   if (!image) return null;
+  if (image.url === "/v1/media/restricted") return <div className="offer-gallery"><div className="offer-gallery-main"><MediaImage image={image} title="Restricted offer" /></div></div>;
   return <div className="offer-gallery">
     <button type="button" className="offer-gallery-main" aria-label="Enlarge offer image" onClick={() => setOpen(true)}><MediaImage image={image} title={title} /></button>
     {images.length > 1 && <div className="offer-gallery-thumbs" aria-label="Offer images">{images.map((item, n) => <button type="button" key={item.id} aria-label={`Show image ${n + 1}`} aria-pressed={n === index} onClick={() => select(n)}><MediaImage image={item} title={`${title}, image ${n + 1}`} thumbnail /></button>)}</div>}

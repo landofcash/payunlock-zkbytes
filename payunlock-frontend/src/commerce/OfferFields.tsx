@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { tokenPresentation } from "@/config/token-icons";
 import { useCommerce, type DraftTerms, type Product } from "./client";
 
-import { OfferImageEditor } from "./OfferImages";
+import { OfferGallery, OfferImageEditor } from "./OfferImages";
 type Token = { address: string; symbol: string; decimals: number | null; allowed: boolean | null };
 type TokenPage = { items: Token[]; nextCursor: string | null; incomplete: boolean; discoveryAvailable: boolean };
 type Form = Omit<Product, "id" | "revision">;
@@ -89,8 +89,8 @@ export function OfferFields({ form, onChange, account, confirmed, defaultReview,
     catch { setPriceError("Enter a positive amount with no more decimal places than this token supports."); emittedPrice.current = ""; return ""; }
   }
   return <>
-    <section className="offer-form-section"><h2>Offer details</h2><p className="offer-help">Tell buyers what they will receive.</p><label>Title<input required maxLength={160} placeholder="Give your offer a clear name" value={form.title} onChange={event => onChange({ ...form, title: event.target.value })} /></label><label>Description<textarea maxLength={12000} placeholder="Describe what is included and how you will deliver it" value={form.description} onChange={event => onChange({ ...form, description: event.target.value })} /></label></section>
-    <OfferImageEditor images={form.images ?? []} onChange={images => onChange({ ...form, images })} onBusy={setImagesBusy} stagedFiles={stagedImages} onStagedFilesChange={onStagedImagesChange} />
+    <section className="offer-form-section"><h2>Offer details</h2><p className="offer-help">{form.restricted ? "This offer is restricted. Its text and images are hidden; price and timing can still be updated." : "Tell buyers what they will receive."}</p><label>Title<input disabled={form.restricted} required maxLength={160} placeholder="Give your offer a clear name" value={form.title} onChange={event => onChange({ ...form, title: event.target.value })} /></label><label>Description<textarea disabled={form.restricted} maxLength={12000} placeholder="Describe what is included and how you will deliver it" value={form.description} onChange={event => onChange({ ...form, description: event.target.value })} /></label></section>
+    {form.restricted ? <OfferGallery images={form.images ?? []} title={form.title} /> : <OfferImageEditor images={form.images ?? []} onChange={images => onChange({ ...form, images })} onBusy={setImagesBusy} stagedFiles={stagedImages} onStagedFilesChange={onStagedImagesChange} />}
     <section className="offer-form-section"><h2>Price</h2><div className="offer-field-grid">
       <div className="offer-token-picker"><span id="offer-token-label" className="offer-field-label">Payment token</span><Button icon={ChevronDown} variant="secondary" className="offer-token-trigger" aria-labelledby="offer-token-label" aria-expanded={pickerOpen} disabled={loading} onClick={() => setPickerOpen(!pickerOpen)}>{selected ? <TokenName token={selected} /> : loading ? "Loading tokens…" : "Select a token"}</Button>
         {pickerOpen && <div className="offer-token-options" role="group" aria-label="Enabled payment tokens">{tokens.map(token => <Button key={token.address} variant="ghost" aria-pressed={terms.token === token.address} onClick={() => { const units = updatePrice(price, token); updateTerms({ token: token.address, price: units }); setPickerOpen(false); }}><TokenName token={token} /></Button>)}</div>}

@@ -11,10 +11,13 @@ import { TransactionService, actionSchema } from "../services/transaction-servic
 import { RelayerService } from "../services/relayer-service.js";
 
 import { MAX_IMAGE_BYTES, saveOfferImage } from "../services/offer-images.js";
+import { offerPresentation, restrictedImageSvg } from "../services/offer-presentation.js";
 export interface CommerceOptions { config: Config; chain?: ChainService; indexer?: IndexerService }
 const uuidParams = z.strictObject({ id: z.uuid() });
 const orderParams = z.strictObject({ id: orderId });
-const publicProduct = (p: ProductRow) => ({ id: p.id, title: p.title, description: p.description, images: p.images ?? [], revision: p.revision });
+const productMetadata = (p: ProductRow) => ({ id: p.id, title: p.title, description: p.description, images: p.images ?? [], revision: p.revision, restricted: p.restricted ?? false, frontpagePosition: p.frontpage_position ?? null });
+const publicProduct = (p: ProductRow) => offerPresentation(productMetadata(p));
+const originalProduct = (p: ProductRow) => ({ ...productMetadata(p), seller: p.seller, visibility: p.visibility, draftTerms: p.draft_terms });
 const sellerProduct = (p: ProductRow) => ({ ...publicProduct(p), seller: p.seller, visibility: p.visibility, draftTerms: p.draft_terms });
 
 export const commerceRoutes: FastifyPluginAsync<CommerceOptions> = async (app, options) => {
@@ -25,6 +28,13 @@ export const commerceRoutes: FastifyPluginAsync<CommerceOptions> = async (app, o
   const transactions = new TransactionService(chain, catalog);
   const relayer = new RelayerService(app.db, chain);
   const identity = (request: FastifyRequest) => auth.authenticate(request.headers.authorization, request.headers.origin);
+  async function administrator(request: FastifyRequest) {
+    const wallet = await identity(request), block = await chain.anchor();
+    if (String((await chain.call("owner", [], block))[0]).toLowerCase() !== wallet) throw new ApiError(403, "FORBIDDEN");
+    await chain.ensureCanonical(block);
+    return wallet;
+  }
+  app.get("/media/restricted", async (_request, reply) => reply.type("image/svg+xml").header("X-Content-Type-Options", "nosniff").send(restrictedImageSvg));
   app.post("/relay/payments", async request => {
     auth.origin(request.headers.origin);
     await auth.rateLimit(request.ip, "relay-payment", 20);
@@ -109,7 +119,7 @@ export const commerceRoutes: FastifyPluginAsync<CommerceOptions> = async (app, o
   });
   app.post("/auth/logout", async request => { await identity(request); await auth.logout(request.headers.authorization!); return { status: "signed_out" }; });
 
-  async function discovery(products: ProductRow[]) {
+  async function discovery(products: ProductRow[], present: typeof publicProduct = publicProduct) {
     const mappings = await catalog.mappings(products.map(p => p.id));
     const keys = mappings.map(m => `${deploymentKey}:${m.seller}:${m.product_key}`);
     let sales: Awaited<ReturnType<IndexerService["products"]>> | undefined;
@@ -118,10 +128,48 @@ export const commerceRoutes: FastifyPluginAsync<CommerceOptions> = async (app, o
       const mapping = mappings.find(m => m.product_id === product.id);
       const sale = !mapping ? { status: "unregistered" } : !sales ? { status: "unavailable" }
         : sales.get(`${deploymentKey}:${mapping.seller}:${mapping.product_key}`) ?? { status: "syncing" };
-      return { ...publicProduct(product), sale };
+      return { ...present(product), sale };
     });
   }
 
+  app.get("/products/featured", async () => ({ items: await discovery(await catalog.featured()), nextCursor: null, indexing: await indexer.freshness() }));
+  app.get("/admin/restricted", async request => {
+    await administrator(request);
+    const query = parse(page.extend({ after: z.uuid().optional() }), request.query);
+    const rows = await catalog.restricted(query.after, query.limit + 1);
+    return { items: await discovery(rows.slice(0, query.limit), originalProduct), nextCursor: rows.length > query.limit ? rows[query.limit - 1]!.id : null };
+  });
+  app.get("/admin/products/:id/original", async request => {
+    await administrator(request);
+    const p = await catalog.adminProduct(parse(uuidParams, request.params).id);
+    let preview: { configuration: Awaited<ReturnType<ChainService["configuration"]>>; asset: Awaited<ReturnType<TransactionService["assetMetadata"]>> } | null = null;
+    try {
+      const mapping = await catalog.mapping(p.id), configuration = await chain.configuration(mapping.seller, mapping.product_key);
+      preview = { configuration, asset: await transactions.assetMetadata(configuration.terms.token) };
+    } catch { /* Original metadata remains available for drafts and during chain outages. */ }
+    return { product: (await discovery([p], originalProduct))[0], version: p.version, preview };
+  });
+  app.get("/admin/featured", async request => {
+    await administrator(request);
+    const result = await catalog.adminFeatured();
+    return { version: result.version, items: await discovery(result.items) };
+  });
+  app.put("/admin/featured", async request => {
+    await administrator(request);
+    const body = parse(z.strictObject({ ids: z.array(z.uuid()).max(1000), expectedVersion: uint }), request.body);
+    const result = await catalog.saveFeatured(body.ids, body.expectedVersion);
+    return { version: result.version, items: await discovery(result.items.map((p, index) => ({ ...p, frontpage_position: index + 1 }))) };
+  });
+  app.get("/admin/products/:id", async request => {
+    await administrator(request);
+    const p = await catalog.adminProduct(parse(uuidParams, request.params).id);
+    return { restricted: p.restricted, frontpagePosition: p.frontpage_position, visibility: p.visibility, version: p.version };
+  });
+  app.patch("/admin/products/:id", async request => {
+    await administrator(request);
+    const body = parse(z.strictObject({ expectedVersion: uint, featured: z.boolean().optional(), restricted: z.boolean().optional() }).refine(value => value.featured !== undefined || value.restricted !== undefined), request.body);
+    return catalog.moderate(parse(uuidParams, request.params).id, body);
+  });
   app.get("/products", async request => {
     const query = parse(page.extend({ after: z.uuid().optional() }), request.query);
     const rows = await catalog.list(undefined, query.after, query.limit + 1);

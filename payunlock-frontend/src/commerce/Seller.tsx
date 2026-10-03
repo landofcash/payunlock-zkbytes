@@ -48,7 +48,7 @@ export function SellerEditor() {
   useEffect(() => { void task.run(async () => { const policy = await api.read<FeePolicy & { minCommitmentWindow: number; maxCommitmentWindow: number }>("/platform"); setBounds(policy); setFeePolicy(policy); if (id && wallet.session) await load(); }); }, [id, sourceEpoch]);
   async function load() {
     if (!id) return;
-    const p = await api.request<Product>(`/seller/products/${id}`); setProduct(p); setForm({ title: p.title, description: p.description, images: p.images, visibility: p.visibility, draftTerms: p.draftTerms });
+    const p = await api.request<Product>(`/seller/products/${id}`); setProduct(p); setForm({ title: p.title, description: p.description, images: p.images, restricted: p.restricted, visibility: p.visibility, draftTerms: p.draftTerms });
     let configuration: RegistrationConfiguration | undefined;
     try { configuration = (await api.request<{ configuration: RegistrationConfiguration }>(`/seller/products/${id}/registration`)).configuration; setConfirmed(configuration); } catch { setConfirmed(undefined); }
     const rows = await journal.list(wallet.session!.address); let pending = rows.filter(r => r.productId === id && !r.requestId).at(-1);
@@ -80,7 +80,7 @@ export function SellerEditor() {
       }
       const body = { title: form.title, description: form.description, images, visibility: form.visibility, draftTerms: form.draftTerms };
       const p = id ? await api.request<Product>(`/seller/products/${id}`, { ...body, expectedRevision: product!.revision }, "PUT") : await api.request<Product>("/seller/products", body);
-      setProduct(p); setForm({ title: p.title, description: p.description, images: p.images, visibility: p.visibility, draftTerms: p.draftTerms });
+      setProduct(p); setForm({ title: p.title, description: p.description, images: p.images, restricted: p.restricted, visibility: p.visibility, draftTerms: p.draftTerms });
       if (!confirmed || p.visibility === "draft") { if (id) setStage("review"); else createdId = p.id; }
     });
     if (createdId) navigate(`/sales/products/${createdId}?step=review`);
@@ -128,7 +128,7 @@ export function SellerEditor() {
       throw new Error("This draft changed in another session. Review its latest version before publishing.");
     }
     const saved = await api.request<Product>(`/seller/products/${product.id}`, { title: current.title, description: current.description, images: current.images, draftTerms: current.draftTerms, visibility: intent.visibility, expectedRevision: current.revision }, "PUT");
-    setProduct(saved); setForm({ title: saved.title, description: saved.description, images: saved.images, visibility: saved.visibility, draftTerms: saved.draftTerms }); setPublished(true);
+    setProduct(saved); setForm({ title: saved.title, description: saved.description, images: saved.images, restricted: saved.restricted, visibility: saved.visibility, draftTerms: saved.draftTerms }); setPublished(true);
   }
   const wizard = !confirmed || product?.visibility === "draft" || (!!record?.publication && stage === "transaction");
   if (id && !wallet.session) return <section className="commerce-page"><h1>Create an offer</h1><WalletGate /></section>;

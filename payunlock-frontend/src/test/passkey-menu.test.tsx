@@ -1,22 +1,43 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ supported: true, accounts: [] as string[], open: vi.fn(), create: vi.fn(), connect: vi.fn(), session: null as null | { kind: string; address: string; chainId: string; passkey: { credentialId: string; rpId: string } }, backup: vi.fn() }));
+const mocks = vi.hoisted(() => ({ read: vi.fn(), supported: true, accounts: [] as string[], open: vi.fn(), create: vi.fn(), connect: vi.fn(), session: null as null | { kind: string; address: string; chainId: string; passkey: { credentialId: string; rpId: string } }, backup: vi.fn() }));
 vi.mock("@/wallet/passkey", () => ({ canUsePasskeys: () => mocks.supported, openPasskeySession: mocks.open, exportPasskeySecret: mocks.backup, passkeyError: () => "Passkey not completed. Use password instead or retry." }));
 vi.mock("@/wallet/vault", () => ({ VAULT_EVENT: "test-vault", VAULT_CHANGE_KEY: "test-change", WalletVault: class {
   selected = async () => null; list = async () => mocks.accounts; create = mocks.create;
 } }));
 vi.mock("@/wallet/ApprovalProvider", () => ({ useApproval: () => async () => true }));
 vi.mock("@/wallet/WalletBalances", () => ({ WalletBalances: () => null }));
-vi.mock("@/commerce/client", () => ({ useCommerceAccess: () => ({ signOut: vi.fn() }) }));
+vi.mock("@/commerce/client", () => ({ useCommerce: () => ({ read: mocks.read }), useCommerceAccess: () => ({ address: mocks.session?.address, signOut: vi.fn() }) }));
 vi.mock("@/wallet/session-store", () => ({ useSession: () => ({ session: mocks.session, sessionEpoch: 0, busy: false, connectBuiltIn: mocks.connect, identities: [] }) }));
 import { WalletMenu } from "@/wallet/WalletPage";
 import { PASSKEY_ACCOUNTS_KEY, rememberPasskeyAccount } from "@/wallet/saved-passkeys";
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear(); mocks.supported = true; mocks.session = null; mocks.accounts = [];
+  mocks.read.mockResolvedValue({ owner: `0x${"11".repeat(20)}` });
   // jsdom's UA stylesheet hides [popover] even with the shared API shim.
   HTMLElement.prototype.showPopover = function () { this.hidden = false; this.style.display = "block"; this.dispatchEvent(Object.assign(new Event("toggle"), { newState: "open" })); };
   HTMLElement.prototype.hidePopover = function () { this.hidden = true; this.style.display = "none"; this.dispatchEvent(Object.assign(new Event("toggle"), { newState: "closed" })); };
+});
+
+it.each([true, false])("shows Top Offers below Settings only for the connected admin (admin=%s)", async admin => {
+  mocks.session = { kind: "builtin", address: `0x${(admin ? "11" : "22").repeat(20)}`, chainId: "0x279f", passkey: { credentialId: "test", rpId: "example.test" } };
+  render(<MemoryRouter><WalletMenu /></MemoryRouter>);
+  fireEvent.click(screen.getByRole("button", { name: "Account menu" }));
+  await waitFor(() => expect(mocks.read).toHaveBeenCalledWith("/platform"));
+  if (admin) {
+    const link = await screen.findByRole("link", { name: "Top Offers" });
+    expect(link).toHaveAttribute("href", "/admin/featured");
+    expect(screen.getByRole("link", { name: "Settings" }).compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const restricted = screen.getByRole("link", { name: "Restricted Offers" });
+    expect(restricted).toHaveAttribute("href", "/admin/restricted");
+    expect(link.compareDocumentPosition(restricted) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(link);
+    expect(screen.queryByRole("dialog", { name: "Wallet" })).not.toBeInTheDocument();
+  } else {
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Top Offers" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("link", { name: "Restricted Offers" })).not.toBeInTheDocument();
+  }
 });
 
 it("lists a previously used passkey, signs in to that account, and keeps discovery after the list is cleared", async () => {
