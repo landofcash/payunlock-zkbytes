@@ -38,7 +38,7 @@ function AppShell({ apiOrigin, walletsEnabled }: { apiOrigin: string; walletsEna
     }).catch(() => { if (!controller.signal.aborted) setAvailability("Service unavailable"); });
     return () => controller.abort();
   }, [apiOrigin]);
-  return <ApprovalProvider><CommerceProvider origin={apiOrigin}><div className="app-shell">
+  return <ApprovalProvider><CommerceProvider origin={apiOrigin}><div className={location.pathname === "/" ? "app-shell homepage-shell" : "app-shell"}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     <header><Link className="brand" to="/" aria-label="PayUnlock home"><span className="brand-icon" aria-hidden="true" />PayUnlock</Link>
       <nav aria-label="Main navigation"><NavLink to="/discover"><Compass aria-hidden="true" />Discover</NavLink><NavLink to="/purchases"><ShoppingBag aria-hidden="true" />Purchases</NavLink><SellerMenu /></nav>
