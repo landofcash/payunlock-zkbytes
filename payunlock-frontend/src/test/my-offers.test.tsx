@@ -6,13 +6,14 @@ const mocks = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock("@/commerce/client", () => ({ useCommerce: () => ({ request: mocks.request }), ProtectedAccess: ({ children }: { children: ReactNode }) => children }));
 import { MyOffers } from "@/commerce/MyOffers";
 it("shows draft editing without delivery actions and requests filtered pages", async () => {
-  mocks.request.mockImplementation(async (path: string) => ({ items: path.includes("filter=published") ? [{ id: "published", title: "Live offer", visibility: "hidden" }] : [{ id: "draft", title: "Saved draft", visibility: "draft" }], nextCursor: path.includes("after=") || path.includes("published") ? null : "draft" }));
+  mocks.request.mockImplementation(async (path: string) => ({ items: path.includes("filter=published") ? [{ id: "published", title: "Live offer", visibility: "hidden" }] : path.includes("after=") ? [{ id: "draft-2", title: "Another saved draft", visibility: "draft" }] : [{ id: "draft", title: "Saved draft", visibility: "draft" }], nextCursor: path.includes("after=") || path.includes("published") ? null : "draft" }));
   render(<MemoryRouter initialEntries={["/offers?filter=draft"]}><MyOffers /></MemoryRouter>);
   const draft = (await screen.findByRole("heading", { name: "Saved draft" })).closest("article")!;
   expect(within(draft).getByRole("link", { name: "Continue editing" })).toHaveAttribute("href", "/sales/products/draft");
   expect(within(draft).queryByRole("link", { name: "Deliver orders" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "More offers" }));
   await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledWith("/seller/products?filter=draft&after=draft"));
+  await screen.findByRole("heading", { name: "Another saved draft" });
   fireEvent.click(screen.getByRole("link", { name: "Published" }));
   await screen.findByRole("heading", { name: "Live offer" });
   expect(screen.queryByRole("heading", { name: "Saved draft" })).not.toBeInTheDocument();
