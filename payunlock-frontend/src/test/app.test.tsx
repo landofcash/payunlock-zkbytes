@@ -10,7 +10,7 @@ it("validates API responses and shows the catalog without signing", async () => 
   vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith("/health") ? ({ status: "ok", service: "payunlock-api" }) : ({ items: [], nextCursor: null }) })));
   render(<MemoryRouter><SessionProvider><App apiOrigin="http://127.0.0.1:4321" /></SessionProvider></MemoryRouter>);
   expect(await screen.findByText("Connected")).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Discover offers" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Top Offers" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /buy|pay|connect wallet/i })).not.toBeInTheDocument();
 });
 it("shows API failure without breaking navigation", async () => {
