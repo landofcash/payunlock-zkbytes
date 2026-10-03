@@ -231,9 +231,9 @@ button svg, .button svg { vertical-align: middle; } [aria-hidden="true"] { user-
 .illustration-footer { display: flex; gap: 6px; align-items: center; margin-top: 20px; font-size: 10px; color: var(--muted); } .illustration-footer span { margin-left: auto; }
 .offers { padding-bottom: 36px; scroll-margin-top: 24px; } .section-heading .eyebrow { margin-bottom: 8px; }
 .discover-page .section-heading h1 { margin: 0; }
-.discover-page .offer-card { display: flex; flex-direction: column; }
-.discover-page .offer-card-content { display: flex; flex: 1; flex-direction: column; }
-.discover-page .offer-card-content .offer-price { margin-top: auto; padding-top: 14px; }
+.offer-card { display: flex; flex-direction: column; }
+.offer-card-content { display: flex; flex: 1; flex-direction: column; }
+.offer-card-content .offer-price { margin-top: auto; padding-top: 14px; }
 .offer-grid { grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 20px; }
 .homepage-offer-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; padding: 26px 0 20px; }
 .homepage-offer-grid > .hero { grid-column: span 2; padding: 32px 28px 0 0; position: relative; isolation: isolate; }
