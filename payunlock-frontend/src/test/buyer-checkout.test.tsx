@@ -46,6 +46,22 @@ it("shows public price and timing without authentication or receiving signatures
   fireEvent.click(screen.getByRole("button", { name: "Sign in to continue" }));
   expect(mocks.authorize).toHaveBeenCalledOnce();
 });
+it("hides signing steps when the wallet locks or its active session is cleared", async () => {
+  coveredCheckout();
+  const view = render(<MemoryRouter><BuyerCheckout product={product} preview={preview()} /></MemoryRouter>);
+  expect(await screen.findByRole("list", { name: "Payment steps" })).toHaveTextContent("Authorize exact token payment");
+  mocks.access.authenticated = false;
+  mocks.session = { address: account, locked: true };
+  view.rerender(<MemoryRouter><BuyerCheckout product={product} preview={preview()} /></MemoryRouter>);
+  expect(screen.queryByRole("list", { name: "Payment steps" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Sign in to continue" })).toBeEnabled();
+  mocks.session = null;
+  view.rerender(<MemoryRouter><BuyerCheckout product={product} preview={preview()} /></MemoryRouter>);
+  expect(screen.queryByRole("list", { name: "Payment steps" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Sign in to continue" })).toBeEnabled();
+  expect(mocks.receiving).not.toHaveBeenCalled();
+});
+
 it("allows sign-in with a last-used wallet even when its public balance is too low", async () => {
   mocks.access.authenticated = false; mocks.session = null;
   configuration.authorizationMode = "eip3009-receive";
