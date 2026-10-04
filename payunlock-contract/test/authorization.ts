@@ -93,6 +93,20 @@ describe("authorized token payments", function () {
     expect(await fn(f.token, "balanceOf")(f.buyer.address)).to.equal(400_000_000n);
   });
 
+  for (const retryWins of [false, true]) it(`charges only once when a fresh authorization retries the same checkout (retry wins: ${retryWins})`, async () => {
+    const original = await purchasePacket(f, h("retried-purchase"));
+    const retryAuth = { ...original.auth, salt: h("fresh-retry-salt") };
+    const retryNonce = await fn(f.router, "purchaseNonce")(original.intent, retryAuth);
+    retryAuth.signature = await signReceive(f, retryNonce, 100_000_000n, retryAuth.validAfter, retryAuth.validBefore);
+    const winner = retryWins ? retryAuth : original.auth, loser = retryWins ? original.auth : retryAuth;
+    await fn(f.router.connect(f.relayer), "purchaseWithAuthorization")(original.intent, winner);
+    await expect(fn(f.router.connect(f.relayer), "purchaseWithAuthorization")(original.intent, loser)).to.be.revertedWithCustomError(f.escrow, "DuplicateRequest");
+    expect(await fn(f.escrow, "orderForRequest")(f.buyer.address, original.intent.requestId)).to.equal(1n);
+    expect(await fn(f.token, "balanceOf")(f.buyer.address)).to.equal(400_000_000n);
+    expect(await fn(f.token, "balanceOf")(await f.router.getAddress())).to.equal(0n);
+    expect(await fn(f.token, "authorizationState")(f.buyer.address, retryWins ? original.nonce : retryNonce)).to.equal(false);
+  });
+
   it("rejects altered order fields and refunds the full principal", async () => {
     const packet = await purchasePacket(f, h("purchase-2"));
     await expect(fn(f.router.connect(f.relayer), "purchaseWithAuthorization")({ ...packet.intent, receiving: receiving("attacker") }, packet.auth)).to.be.revertedWith("invalid signature");

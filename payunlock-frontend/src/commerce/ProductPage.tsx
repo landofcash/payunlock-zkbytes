@@ -19,6 +19,7 @@ import { OfferAdmin } from "./FeaturedAdmin";
 import { OrderDialog } from "./OrderPresentation";
 import { assertPurchaseSignature, buildPurchaseAuthorization } from "./token-authorization";
 import { purchaseMatches } from "./purchase-journal";
+import { BuiltinBuyerCheckout } from "./BuiltinBuyerCheckout";
 export type OfferPreview = { configuration: Configuration; asset: { symbol: string; decimals: number } };
 const relayFailureMessages: Record<string, string> = {
   DAILY_BUDGET: "The relayer has reached its daily gas limit. Try again later or pay the network fee yourself.",
@@ -80,6 +81,11 @@ export function ProductPage() {
   </section>;
 }
 export function BuyerCheckout({ product, preview, resumeId, onCompletionChange }: { product: Product; preview?: OfferPreview; resumeId?: string; onCompletionChange?: (completed: boolean) => void }) {
+  const wallet = useSession();
+  if (wallet.session?.kind === "builtin") return <BuiltinBuyerCheckout product={product} preview={preview} resumeId={resumeId} onCompletionChange={onCompletionChange} result={(record, again) => <PurchaseResult record={record} productTitle={product.title} onBuyAgain={again} />} />;
+  return <ConnectedBuyerCheckout product={product} preview={preview} resumeId={resumeId} onCompletionChange={onCompletionChange} />;
+}
+function ConnectedBuyerCheckout({ product, preview, resumeId, onCompletionChange }: { product: Product; preview?: OfferPreview; resumeId?: string; onCompletionChange?: (completed: boolean) => void }) {
   const api = useCommerce(), access = useCommerceAccess(), wallet = useSession(), task = useTask(), location = useLocation(), navigate = useNavigate();
   const [record, setRecord] = useState<Operation>(), [loaded, setLoaded] = useState(false), [asset, setAsset] = useState<Asset>();
   const [notice, setNotice] = useState(""), [topUp, setTopUp] = useState<{ symbol: string; token: string }>();
