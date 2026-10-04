@@ -705,8 +705,11 @@ body .ui-button.rainbow-button:disabled::before { display: none; }
 .buyer-balances { position: relative; padding: 16px; margin: 20px 0; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 12px; }
 .buyer-balances > details { margin: 0; }
 .buyer-balances summary { min-height: 24px; padding: 0 40px 0 0; line-height: 24px; }
+.buyer-balances summary > span { margin-right: 12px; }
+.buyer-balances summary .buyer-balance-readiness { display: inline-flex; vertical-align: middle; }
 body .buyer-balance-refresh { position: absolute; top: 13px; right: 12px; width: 30px; min-height: 30px; padding: 6px; margin: 0; }
 .buyer-balance-content { display: grid; gap: 14px; padding-top: 14px; }
+.buyer-balance-content > .buyer-fee-switch { justify-self: start; }
 .buyer-balance-account { min-width: 0; }
 .buyer-balance-account strong { font-size: 13px; }
 .buyer-balance-account .copyable-field { margin: 2px 0 0; }

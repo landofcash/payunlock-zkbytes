@@ -10,7 +10,7 @@ const asset: Asset = { token, symbol: "USDC", decimals: 6, balance: "21237500", 
 beforeEach(() => localStorage.clear());
 function mount(overrides: Partial<Parameters<typeof PaymentBalance>[0]> = {}) {
   const handlers = { onRefresh: vi.fn(), onTopUp: vi.fn() };
-  render(<PaymentBalance address={address} asset={asset} configuration={configuration} selfPay={false} open busy={false} error="" {...handlers} {...overrides} />);
+  render(<PaymentBalance address={address} asset={asset} configuration={configuration} selfPay={false} busy={false} error="" {...handlers} {...overrides} />);
   return handlers;
 }
 
@@ -18,6 +18,10 @@ it("shows the saved name, exact balance and purchase readiness without unrelated
   const name = "Personal shopping account";
   saveAccountName(address, name);
   const handlers = mount();
+  const details = screen.getByText("Your balance").closest("details")!;
+  expect(details.open).toBe(false);
+  fireEvent.click(screen.getByText("Your balance"));
+  expect(details.open).toBe(true);
   expect(screen.getByTitle(name)).toHaveTextContent(`${name.slice(0, 18)}…`);
   expect(screen.getByRole("button", { name: "Copy address" })).toBeInTheDocument();
   expect(screen.getByText("21.2375 USDC")).toBeInTheDocument();
@@ -30,21 +34,40 @@ it("shows the saved name, exact balance and purchase readiness without unrelated
 
 it("shows the exact shortfall when the balance is insufficient", () => {
   mount({ asset: { ...asset, balance: "1000001" } });
+  expect(screen.getByText("Your balance").closest("details")!.open).toBe(true);
   expect(screen.getByRole("status", { name: "Purchase balance" })).toHaveTextContent("You need another 0.249999 USDC");
   expect(screen.queryByText("Enough for this purchase")).not.toBeInTheDocument();
 });
 
 it("refreshes from the header without expanding a collapsed section and shows gas top-up for direct payment", () => {
-  const handlers = mount({ selfPay: true, open: false });
+  const handlers = mount({ selfPay: true });
   const details = screen.getByText("Your balance").closest("details")!;
   fireEvent.click(screen.getByRole("button", { name: "Refresh balance" }));
   expect(handlers.onRefresh).toHaveBeenCalledOnce();
   expect(details.open).toBe(false);
-  details.open = true;
+  fireEvent.click(screen.getByText("Your balance"));
   expect(screen.getByRole("group", { name: "MON balance" })).toHaveTextContent("1.0 MON");
   fireEvent.click(screen.getByRole("button", { name: "Top up MON" }));
   expect(handlers.onTopUp).toHaveBeenCalledWith({ token: `0x${"00".repeat(20)}`, symbol: "MON" });
   expect(screen.queryByText("Network fee covered")).not.toBeInTheDocument();
+});
+
+it("keeps the fee choice inside the expandable balance and opens automatically after a shortfall", () => {
+  const onChange = vi.fn();
+  const props = { address, asset, configuration, selfPay: false, feeChoice: { disabled: false, onChange }, busy: false, error: "", onRefresh: vi.fn(), onTopUp: vi.fn() };
+  const view = render(<PaymentBalance {...props} />);
+  const details = screen.getByText("Your balance").closest("details")!;
+  expect(details.open).toBe(false);
+  expect(screen.getByRole("switch", { name: "Pay network fee myself" })).toBeInTheDocument();
+  expect(screen.getByRole("switch", { name: "Pay network fee myself" }).closest("details")).toBe(details);
+  fireEvent.click(screen.getByText("Your balance"));
+  const toggle = screen.getByRole("switch", { name: "Pay network fee myself" });
+  fireEvent.click(toggle);
+  expect(onChange).toHaveBeenCalledWith(true);
+  fireEvent.click(screen.getByText("Your balance"));
+  view.rerender(<PaymentBalance {...props} asset={{ ...asset, balance: "0" }} />);
+  expect(details.open).toBe(true);
+  expect(screen.getByRole("status", { name: "Purchase balance" })).toHaveTextContent("You need another 1.25 USDC");
 });
 
 it("does not show balances or readiness when the balance read fails", () => {

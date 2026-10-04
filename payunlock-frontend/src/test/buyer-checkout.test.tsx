@@ -16,6 +16,11 @@ let configuration: Configuration, balances: Asset;
 const operation = (progress: Operation["progress"] = "draft"): Operation => ({ id: "checkout", productId: product.id, requestId: hash, account, deployment: { chainId: 10143, contract }, receiving: { nonce: hash, publicKey: hash }, version: 1, progress, hashes: [], configuration });
 const preview = () => ({ configuration, asset: { symbol: balances.symbol, decimals: balances.decimals } });
 function checkout(resumeId?: string) { render(<MemoryRouter><BuyerCheckout product={product} preview={preview()} resumeId={resumeId} /></MemoryRouter>); }
+async function openFeeChoice() {
+  const balance = await screen.findByText("Your balance");
+  if (!balance.closest("details")!.open) fireEvent.click(balance);
+  return screen.findByRole("switch", { name: "Pay network fee myself" });
+}
 beforeEach(() => {
   vi.clearAllMocks(); mocks.access.authenticated = true; mocks.session = { address: account };
   configuration = { chainId: 10143, contract, seller: contract, productKey: hash, expectedTerms: hash, terms: { token: native, price: "1000000000000000", hasEventEnd: false, eventEnd: "0", reviewWindow: "86400", responseWindow: "259200", commitmentWindow: "600" }, sellerReceiving: { nonce: hash, publicKey: hash }, authorizationMode: "direct-only", serviceFee: { bps: 0, treasury: contract, sellerCapBps: 0 }, status: 1, allowed: true, block: { number: 1, hash, timestamp: 1 } };
@@ -191,7 +196,7 @@ function coveredCheckout() {
 it("switches fee modes both ways without changing checkout identity or receiving keys", async () => {
   coveredCheckout();
   const saved = operation(); mocks.list.mockResolvedValue([saved]); checkout();
-  const toggle = await screen.findByRole("switch", { name: "Pay network fee myself" });
+  const toggle = await openFeeChoice();
   expect(toggle).not.toBeChecked();
   expect(screen.getByText("Network fee covered.")).toBeInTheDocument();
   fireEvent.click(toggle);
@@ -210,7 +215,7 @@ it("switches fee modes both ways without changing checkout identity or receiving
 
 it("opens approval after selecting self-paid fees, then clears the prepared transaction when switching back", async () => {
   coveredCheckout(); const saved = operation(); mocks.list.mockResolvedValue([saved]); checkout();
-  fireEvent.click(await screen.findByRole("switch", { name: "Pay network fee myself" }));
+  fireEvent.click(await openFeeChoice());
   fireEvent.click(await screen.findByRole("button", { name: "Review token approval" }));
   expect(await screen.findByRole("button", { name: "Approve token payment" })).toBeInTheDocument();
   expect(mocks.prepare).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ requestId: saved.requestId, receiving: saved.receiving }), expect.objectContaining({ kind: "approve" }), true);
@@ -223,13 +228,13 @@ it("opens approval after selecting self-paid fees, then clears the prepared tran
 it("restores the saved self-payment choice on reopening a checkout", async () => {
   coveredCheckout(); mocks.list.mockResolvedValue([{ ...operation(), payNetworkFeeSelf: true }]); checkout();
   expect(await screen.findByRole("button", { name: "Review token approval" })).toBeInTheDocument();
-  expect(screen.getByRole("switch", { name: "Pay network fee myself" })).toBeChecked();
+  expect(await openFeeChoice()).toBeChecked();
 });
 
 it("keeps a fee choice made before signing in when starting a new checkout", async () => {
   coveredCheckout(); mocks.access.authenticated = false; mocks.session = null;
   const view = render(<MemoryRouter><BuyerCheckout product={product} preview={preview()} /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole("switch", { name: "Pay network fee myself" }));
+  fireEvent.click(await openFeeChoice());
   await waitFor(() => expect(screen.getByRole("switch", { name: "Pay network fee myself" })).toBeChecked());
   mocks.access.authenticated = true; mocks.session = { address: account };
   view.rerender(<MemoryRouter><BuyerCheckout product={product} preview={preview()} /></MemoryRouter>);
@@ -237,19 +242,17 @@ it("keeps a fee choice made before signing in when starting a new checkout", asy
   expect(screen.getByRole("switch", { name: "Pay network fee myself" })).toBeChecked();
 });
 
-it("disables fee changes during an unresolved direct token approval", async () => {
+it("hides fee changes during an unresolved direct token approval", async () => {
   coveredCheckout(); mocks.list.mockResolvedValue([{ ...operation("checking"), payNetworkFeeSelf: true, action: { kind: "approve", requestId: hash, expectedTerms: hash } }]); checkout();
-  const toggle = await screen.findByRole("switch", { name: "Pay network fee myself" });
-  expect(toggle).toBeChecked(); expect(toggle).toBeDisabled();
-  fireEvent.click(toggle);
+  await screen.findByRole("heading", { name: "Checking token approval" });
+  expect(screen.queryByRole("switch", { name: "Pay network fee myself" })).not.toBeInTheDocument();
   expect(mocks.save).not.toHaveBeenCalled();
 });
 
-it.each([undefined, "relay-job"])("disables fee changes while submitted payment is unresolved (%s)", async relayJobId => {
+it.each([undefined, "relay-job"])("hides fee changes while submitted payment is unresolved (%s)", async relayJobId => {
   coveredCheckout(); mocks.list.mockResolvedValue([{ ...operation("checking"), relayJobId }]); checkout();
-  const toggle = await screen.findByRole("switch", { name: "Pay network fee myself" });
-  expect(toggle).toBeDisabled();
-  fireEvent.click(toggle);
+  await screen.findByRole("heading", { name: "Checking payment" });
+  expect(screen.queryByRole("switch", { name: "Pay network fee myself" })).not.toBeInTheDocument();
   expect(mocks.save).not.toHaveBeenCalled();
   expect(mocks.prepare).not.toHaveBeenCalled();
 });
