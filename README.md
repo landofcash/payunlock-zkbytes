@@ -2,6 +2,8 @@
 
 A hackathon project for selling digital products and event access with encrypted delivery on Monad.
 
+Known issues, deployment blockers, and deferred MVP improvements are tracked in [the issue tracker](docs/ISSUE_TRACKER.md).
+
 ## Demo status
 
 The current preview supports MetaMask, WalletConnect, and a built-in wallet. All three wallet options have been manually tested successfully.

@@ -104,9 +104,8 @@ async function main() {
     if (!finalized) return;
     for (const job of rows) {
       const outcome = await externalOutcome(job);
-      if (outcome) {
-        const receipt = job.transaction_hash ? await provider.getTransactionReceipt(job.transaction_hash) : null;
-        await finish(job.id, outcome, job.transaction_hash, receipt ? receipt.gasUsed * receipt.gasPrice : undefined,
+      if (outcome && !job.transaction_hash) {
+        await finish(job.id, outcome, null, undefined,
           outcome === "failed" ? "AUTHORIZATION_CANCELED" : undefined);
         continue;
       }
@@ -120,6 +119,13 @@ async function main() {
       if (receipt && receipt.blockNumber <= finalized.number) {
         const block = await provider.getBlock(receipt.blockNumber);
         if (block?.hash !== receipt.blockHash) continue;
+        // Another relayer's result does not consume our wallet nonce. Wait for
+        // our receipt, but preserve that result even if our transaction reverted.
+        if (outcome) {
+          await finish(job.id, outcome, job.transaction_hash, receipt.gasUsed * receipt.gasPrice,
+            outcome === "failed" ? "AUTHORIZATION_CANCELED" : undefined);
+          continue;
+        }
         // A successful outer transaction is not proof of the intended escrow effect.
         // Confirm the actor-bound result on the finalized chain before closing the job.
         if (receipt.status === 1) {
