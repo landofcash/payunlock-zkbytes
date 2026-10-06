@@ -8,6 +8,8 @@ export async function reconcileAction(api: Reader, account: string, action: Acti
   if (!("orderId" in action)) return false;
   const view = await api.request<OrderView>(`/orders/${action.orderId}`), o = view.order;
   switch (action.kind) {
+    case "withdrawSeller": return o.seller === account && o.state === 8;
+    case "claimResponseTimeout": return o.seller === account ? o.state === 8 : o.buyer === account && o.state === 9;
     case "reserveDelivery": return o.seller === account && BigInt(o.publicationDeadline) > 0n;
     case "publishDelivery": case "openDispute": case "replyToDispute": {
       const turn = action.kind === "publishDelivery" ? "0" : action.kind === "openDispute" ? "1" : action.expectedTurn;

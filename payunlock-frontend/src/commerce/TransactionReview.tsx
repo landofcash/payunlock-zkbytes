@@ -8,14 +8,14 @@ import { OrderAmount } from "./OrderPresentation";
 import { TransactionDialogContext } from "./transaction-dialog-context";
 import { transactionReviewCopy } from "./transaction-review-copy";
 
-export function TransactionReview({ record, summary, subject, confirmLabel, orderPath, canCoverFees, checkingCoverage, selfPay, busy, error, onFeeChange, onConfirm, onCheck, onRetry, retryLabel }: {
+export function TransactionReview({ record, summary, subject, confirmLabel, orderPath, canCoverFees, checkingCoverage, selfPay, busy, error, onFeeChange, onConfirm, onCheck, onRetry, retryLabel, singleApproval, maximumFee, retryPending }: {
   record: Operation; summary?: ReactNode; subject?: string; confirmLabel?: string; orderPath?: string; canCoverFees: boolean; checkingCoverage: boolean; selfPay: boolean;
   busy: boolean; error: string; onFeeChange(value: boolean): void; onConfirm(): void; onCheck(): void;
-  onRetry?: () => void; retryLabel?: string;
+  onRetry?: () => void; retryLabel?: string; singleApproval?: boolean; maximumFee?: bigint; retryPending?: boolean;
 }) {
   const dialog = useContext(TransactionDialogContext), copy = transactionReviewCopy(record.action);
   const reviewing = record.progress === "review", pending = record.progress === "checking", complete = record.progress === "finalized" || record.progress === "draft";
-  const tx = record.transaction, fee = tx ? BigInt(tx.gas) * BigInt(tx.maxFeePerGas) : undefined;
+  const tx = record.transaction, fee = maximumFee ?? (tx ? BigInt(tx.gas) * BigInt(tx.maxFeePerGas) : undefined);
   const lowBalance = selfPay && tx && fee !== undefined && BigInt(tx.balance) < BigInt(tx.value) + fee;
   const StatusIcon = complete ? CheckCircle2 : pending ? Clock : CircleAlert;
   return <section className="transaction-review" aria-busy={busy || undefined}>
@@ -31,7 +31,7 @@ export function TransactionReview({ record, summary, subject, confirmLabel, orde
       {canCoverFees && <label className="transaction-fee-switch buyer-fee-switch"><input type="checkbox" role="switch" checked={selfPay} disabled={busy || !!record.relayNonce} onChange={e => onFeeChange(e.currentTarget.checked)} /><span>Pay network fee myself</span></label>}
       {selfPay && fee !== undefined && <dl className="transaction-review-cost"><dt>Maximum network fee</dt><dd>{formatUnits(fee, 18)} MON</dd><dt>Your MON balance</dt><dd>{formatUnits(tx!.balance, 18)} MON</dd></dl>}
       {lowBalance && <p className="transaction-review-error" role="alert">Not enough MON for this transaction. Top up MON{canCoverFees ? " or switch off Pay network fee myself" : ""}.</p>}
-      <p className="transaction-review-hint">{selfPay ? "Your wallet will ask you to confirm a transaction." : "Your wallet will ask you to sign this action."}</p>
+      <p className="transaction-review-hint">{singleApproval ? "Confirm once. Your built-in wallet will complete the reviewed action automatically." : selfPay ? "Your wallet will ask you to confirm a transaction." : "Your wallet will ask you to sign this action."}</p>
     </div>}
     <details className="transaction-review-details"><summary>Transaction details</summary><dl>
       {tx && <><dt>Transaction value</dt><dd>{formatUnits(tx.value, 18)} MON</dd><dt>Destination</dt><dd><code>{tx.to}</code></dd></>}
@@ -47,7 +47,7 @@ export function TransactionReview({ record, summary, subject, confirmLabel, orde
       {dialog && <Button variant="secondary" disabled={busy} onClick={dialog.close}>{reviewing ? "Cancel" : "Close"}</Button>}
       {reviewing && <Button icon={Send} loading={busy} disabled={checkingCoverage || !!record.relayNonce || !!lowBalance || (selfPay && !tx)} onClick={onConfirm}>{confirmLabel ?? copy.label}</Button>}
       {pending && <Button icon={RefreshCw} iconSpinning={busy} onClick={onCheck}>Check status</Button>}
-      {record.progress === "reverted" && onRetry && <Button icon={RefreshCw} loading={busy} onClick={onRetry}>{retryLabel ?? "Review again"}</Button>}
+      {(record.progress === "reverted" || retryPending || reviewing && !!error) && onRetry && <Button icon={RefreshCw} loading={busy} onClick={onRetry}>{retryLabel ?? "Review again"}</Button>}
     </footer>
   </section>;
 }

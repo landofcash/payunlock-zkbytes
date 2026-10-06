@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { network } from "hardhat";
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 import { AbiCoder, keccak256, toUtf8Bytes, ZeroAddress, type BaseContract } from "ethers";
+import { DELIVERY_GAS_BOUND } from "../../payunlock-frontend/src/commerce/delivery-fees.js";
 
 const h = (value: string) => keccak256(toUtf8Bytes(value));
 const fn = (contract: BaseContract, name: string) => contract.getFunction(name);
@@ -62,6 +63,24 @@ describe("authorized token payments", function () {
   let f: FixtureResult;
   beforeEach(async () => { f = await setup(); });
   afterEach(async () => { await f?.connection.close(); });
+
+  it("covers both delivery estimates including the preparation margin and cannot pay a claim twice", async () => {
+    const packet = await purchasePacket(f, h("seller-flow"));
+    await fn(f.router.connect(f.relayer), "purchaseWithAuthorization")(packet.intent, packet.auth);
+    const reserve = fn(f.escrow.connect(f.seller), "reserveDelivery");
+    expect((await reserve.estimateGas(1)) * 12n / 10n).to.be.at.most(DELIVERY_GAS_BOUND);
+    await reserve(1);
+    await expect(reserve(1)).to.be.revertedWithCustomError(f.escrow, "InvalidState");
+    const ref = await f.reference(), publish = fn(f.escrow.connect(f.seller), "publishDelivery");
+    expect((await publish.estimateGas(1, ref)) * 12n / 10n).to.be.at.most(DELIVERY_GAS_BOUND);
+    await publish(1, ref);
+    await expect(publish(1, ref)).to.be.revertedWithCustomError(f.escrow, "InvalidState");
+    await fn(f.escrow.connect(f.buyer), "confirmReceipt")(1);
+    await fn(f.escrow.connect(f.seller), "withdrawSeller")(1);
+    await expect(fn(f.escrow.connect(f.seller), "withdrawSeller")(1)).to.be.revertedWithCustomError(f.escrow, "InvalidState");
+    await expect(fn(f.escrow.connect(f.seller), "claimResponseTimeout")(1)).to.be.revertedWithCustomError(f.escrow, "InvalidState");
+    expect(await fn(f.token, "balanceOf")(f.seller.address)).to.equal(97_500_000n);
+  });
 
   it("allows only the intended lifecycle selectors through the action router", async () => {
     const permitted = ["updateProduct", "setSalesDisabled", "cancelProduct", "setSellerFeeCap", "reserveDelivery",

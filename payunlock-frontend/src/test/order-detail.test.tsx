@@ -1,20 +1,25 @@
 import "fake-indexeddb/auto";
+import { getBytes, Transaction } from "ethers";
+import { createManagedSession } from "@/wallet/managed-session";
+import type { LabWalletSession } from "@/wallet/types";
+import { sellerDeliveryAbi, sellerClaimAbi } from "@/wallet/seller-authorization";
+const deliveryReference = { serviceId: 1, preparedAt: "100", creator: `0x${"11".repeat(32)}`, buyerEnvelope: `0x03${"11".repeat(64)}`, sellerEnvelope: `0x03${"22".repeat(64)}`, contentHash: `0x${"33".repeat(32)}` };
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import { OrderPage, publicRefundAction } from "@/commerce/Orders";
 import { eventLabel, orderNext } from "@/commerce/OrderPresentation";
 import type { OrderView } from "@/commerce/client";
-const mocks = vi.hoisted(() => ({ read: vi.fn(), request: vi.fn(), address: '0x1111111111111111111111111111111111111111', authenticated: true, authorize: vi.fn(), runOperation: vi.fn(), runOfferKeysOperation: vi.fn(), openDelivery: vi.fn(), restoreReceiving: vi.fn(), prepareDelivery: vi.fn(), upload: vi.fn(), rows: [] as unknown[], ops: [] as unknown[] }));
+const mocks = vi.hoisted(() => ({ read: vi.fn(), request: vi.fn(), address: '0x1111111111111111111111111111111111111111', authenticated: true, session: undefined as LabWalletSession | undefined, authorize: vi.fn(), runOperation: vi.fn(), runOfferKeysOperation: vi.fn(), openDelivery: vi.fn(), restoreReceiving: vi.fn(), prepareDelivery: vi.fn(), upload: vi.fn(), rows: [] as unknown[], ops: [] as unknown[] }));
 vi.mock("@/commerce/client", async original => ({ ...await original<typeof import("@/commerce/client")>(), useCommerce: () => ({ read: mocks.read, request: mocks.request }), useCommerceAccess: () => ({ address: mocks.address, authenticated: mocks.authenticated, authorize: mocks.authorize }), ProtectedAccess: ({ label }: { label: string }) => <button>{label}</button> }));
-vi.mock("@/wallet/session-store", () => ({ useSession: () => ({ session: { address: mocks.address }, sessionEpoch: 1, busy: false, runOperation: mocks.runOperation, runOfferKeysOperation: mocks.runOfferKeysOperation }) }));
+vi.mock("@/wallet/session-store", () => ({ useSession: () => ({ session: mocks.session ?? { address: mocks.address }, sessionEpoch: 1, busy: false, runOperation: mocks.runOperation, runOfferKeysOperation: mocks.runOfferKeysOperation }) }));
 vi.mock("@/commerce/ui", async original => ({ ...await original<typeof import("@/commerce/ui")>(), journal: { list: async () => mocks.ops, save: async (record: { version: number }) => ({ ...record, version: record.version + 1 }) } }));
-vi.mock("@/commerce/lifecycle", async original => ({ ...await original<typeof import("@/commerce/lifecycle")>(), protocolOrder: (view: OrderView, deployment: unknown) => ({ deployment, orderId: view.orderId, buyer: { context: {}, publicKey: view.order.buyerReceiving.publicKey }, seller: { context: {}, publicKey: view.order.sellerReceiving.publicKey } }), deliveryRecord: () => ({}), storageService: () => ({ id: 1, client: { upload: mocks.upload } }), reference: () => ({ serviceId: 1 }) }));
+vi.mock("@/commerce/lifecycle", async original => ({ ...await original<typeof import("@/commerce/lifecycle")>(), protocolOrder: (view: OrderView, deployment: unknown) => ({ deployment, orderId: view.orderId, buyer: { context: {}, publicKey: view.order.buyerReceiving.publicKey }, seller: { context: {}, publicKey: view.order.sellerReceiving.publicKey } }), deliveryRecord: () => ({}), storageService: () => ({ id: 1, client: { upload: mocks.upload } }), reference: () => deliveryReference }));
 vi.mock("@/commerce/protocol", async original => ({ ...await original<typeof import("@/commerce/protocol")>(), openDelivery: (...args: unknown[]) => mocks.openDelivery(...args), restoreReceiving: (...args: unknown[]) => mocks.restoreReceiving(...args), prepareDelivery: (...args: unknown[]) => mocks.prepareDelivery(...args) }));
 const buyer = mocks.address, seller = '0x2222222222222222222222222222222222222222';
 let view: OrderView;
 beforeEach(() => {
-  mocks.address = buyer; mocks.authenticated = true; mocks.authorize.mockReset(); mocks.ops = []; mocks.rows = []; mocks.runOperation.mockReset(); mocks.runOfferKeysOperation.mockReset(); mocks.openDelivery.mockReset(); mocks.restoreReceiving.mockReset(); mocks.prepareDelivery.mockReset(); mocks.upload.mockReset();
+  mocks.session = undefined; mocks.address = buyer; mocks.authenticated = true; mocks.authorize.mockReset(); mocks.ops = []; mocks.rows = []; mocks.runOperation.mockReset(); mocks.runOfferKeysOperation.mockReset(); mocks.openDelivery.mockReset(); mocks.restoreReceiving.mockReset(); mocks.prepareDelivery.mockReset(); mocks.upload.mockReset();
   view = { orderId: '7', block: { number: 50, hash: '0x00', timestamp: 100 }, canceled: false, eligibility: { confirmReceipt: true, openDispute: true }, offer: { status: 'public', title: 'Private workshop', description: 'Workshop access' }, order: { state: 3, buyer, seller, requestId: '0x00', productKey: '0x00', terms: { token: '0x0000000000000000000000000000000000000000', price: '1000000000000000000', hasEventEnd: false, eventEnd: '0', reviewWindow: '86400', responseWindow: '259200', commitmentWindow: '600' }, publicationDeadline: '0', reviewDeadline: '500', responseDeadline: '0', turn: '0', deliveryHash: '0x00', buyerReceiving: { publicKey: 'buyer-key', nonce: 'buyer-nonce' }, sellerReceiving: { publicKey: 'seller-key', nonce: 'seller-nonce' } } };
   mocks.read.mockReset().mockImplementation(async (path: string) => path.startsWith('/public/orders/') ? view : path === '/deployment' ? { chainId: 10143, contract: '0x3333333333333333333333333333333333333333' } : path === '/arbitrators' ? { items: [], nextCursor: null } : path === '/storage-services' ? { items: [{ id: 1, label: 'zkbytes' }] } : {});
   mocks.request.mockReset().mockImplementation(async (path: string) => path === '/orders/7' ? view : path.endsWith('/records') ? { items: mocks.rows, nextCursor: null } : path.endsWith('/history') ? { items: [{ id: 'event', name: 'Purchased', blockNumber: '40', transactionHash: '0xtx', timestamp: 90 }], nextCursor: null } : { items: [], nextCursor: null });
@@ -193,6 +198,7 @@ it('reviews a seller reply transaction in the Conversation dialog', async () => 
   fireEvent.click(await screen.findByRole('button', { name: 'Reply' }));
   const composer = screen.getByRole('dialog', { name: 'Reply' });
   fireEvent.change(within(composer).getByLabelText('Message'), { target: { value: 'Here are the delivery details' } });
+  await waitFor(() => expect(within(composer).getByRole('button', { name: 'Review content' })).toBeEnabled());
   fireEvent.click(within(composer).getByRole('button', { name: 'Review content' }));
   fireEvent.click(within(composer).getByRole('button', { name: 'Continue to transaction' }));
   const review = await screen.findByRole('dialog', { name: 'Send reply' });
@@ -236,6 +242,74 @@ it('opens seller delivery transaction review in a dialog after preparing content
   expect(within(review).getByRole('button', { name: 'Confirm delivery' })).toBeInTheDocument();
   expect(document.querySelectorAll('.order-pending .transaction-panel')).toHaveLength(0);
 });
+it.each([false, true])('completes built-in delivery after one confirmation (self paid: %s)', async selfPay => {
+  const prompt = vi.fn(async () => false), session = createManagedSession(getBytes(`0x${"34".repeat(32)}`), prompt);
+  mocks.session = session; mocks.address = session.address.toLowerCase();
+  view.order.seller = mocks.address; view.order.state = 1; view.eligibility = {};
+  const contract = '0x3333333333333333333333333333333333333333', router = '0x4444444444444444444444444444444444444444', hash = `0x${"55".repeat(32)}`;
+  const submissions: string[] = [];
+  const read = mocks.read.getMockImplementation()!, request = mocks.request.getMockImplementation()!;
+  function finalized() {
+    view.order.state = submissions.length === 1 ? 2 : 3;
+    view.order.publicationDeadline = String(Math.floor(Date.now() / 1000) + 600);
+    if (view.order.state === 3) mocks.rows = [{ turn: '0', sender: mocks.address, commitment: 'delivery-hash', reference: deliveryReference }];
+  }
+  mocks.read.mockImplementation(async (path: string) => {
+    if (path === '/deployment') return { chainId: 10143, contract, router };
+    if (path.startsWith('/relay/jobs/')) { finalized(); return { status: 'finalized', transactionHash: hash }; }
+    return read(path);
+  });
+  mocks.request.mockImplementation(async (path: string, body?: { kind?: string; reference?: unknown; actionData?: string; raw?: string }) => {
+    if (path === '/transactions/prepare' || path === '/transactions/request') return { chainId: 10143, to: contract, data: sellerDeliveryAbi.encodeFunctionData(body!.kind!, body!.kind === 'reserveDelivery' ? [7] : [7, body!.reference]), value: '0', gas: '600000', nonce: view.order.state === 1 ? 0 : 1, maxFeePerGas: '1000000000', maxPriorityFeePerGas: '100000000', balance: '1000000000000000000' };
+    if (path === '/relay/payments') { submissions.push(body!.actionData!); return { id: `job-${submissions.length}` }; }
+    if (path === '/transactions/broadcast') { submissions.push(Transaction.from(body!.raw).data); return {}; }
+    if (path.startsWith('/transactions/0x')) { finalized(); return { status: 'finalized_success' }; }
+    if (path.endsWith('/publication-check')) return { eligible: true };
+    if (path.endsWith('/history')) return { items: [{ name: 'DeliveryReserved', transactionHash: hash }], nextCursor: null };
+    return request(path, body);
+  });
+  mocks.runOperation.mockImplementation(async action => action(session, () => true));
+  mocks.runOfferKeysOperation.mockImplementation(async (_context, _publicKey, action) => action({}, session, () => true));
+  mocks.prepareDelivery.mockImplementation(async ({ order, kind, turn, payload }) => ({ record: { order, kind, turn, sender: mocks.address, serviceId: 1, expiresAt: new Date(Date.now() + 86400 * 365000).toISOString() }, recordHash: 'delivery-hash', item: { seed: 'seed' }, opening: { payload } }));
+  mocks.upload.mockResolvedValue({});
+  const page = mount('/sales/orders/7');
+  try {
+    const prepare = await screen.findByRole('button', { name: 'Prepare delivery' });
+    await waitFor(() => expect(prepare).toBeEnabled()); fireEvent.click(prepare);
+    const composer = screen.getByRole('dialog', { name: 'Prepare delivery' });
+    fireEvent.change(within(composer).getByLabelText('Delivery content'), { target: { value: 'Reviewed access code' } });
+    await waitFor(() => expect(within(composer).getByRole('button', { name: 'Review content' })).toBeEnabled());
+    fireEvent.click(within(composer).getByRole('button', { name: 'Review content' }));
+    const review = await screen.findByRole('dialog', { name: 'Delivery processing' });
+    expect(within(review).getByText('Reviewed access code')).toBeInTheDocument();
+    expect(mocks.upload).not.toHaveBeenCalled(); expect(submissions).toHaveLength(0); expect(prompt).not.toHaveBeenCalled();
+    if (selfPay) {
+      const toggle = await within(review).findByRole('switch', { name: 'Pay network fee myself' });
+      fireEvent.click(toggle); await waitFor(() => expect(toggle).toBeChecked());
+      expect(within(review).getByText('0.002 MON')).toBeInTheDocument();
+    }
+    const send = within(review).getByRole('button', { name: 'Send delivery' });
+    await waitFor(() => expect(send).toBeEnabled()); fireEvent.click(send);
+    await waitFor(() => expect(submissions).toHaveLength(1));
+    if (selfPay) {
+      const close = within(review).getByRole('button', { name: 'Close dialog' });
+      await waitFor(() => expect(close).toBeEnabled()); fireEvent.click(close);
+      await waitFor(() => expect(submissions).toHaveLength(2), { timeout: 7000 });
+      expect(screen.queryByRole('dialog', { name: 'Delivery processing' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Check delivery status' }));
+    } else {
+      const check = await screen.findByRole('button', { name: 'Check status' });
+      await waitFor(() => expect(check).toBeEnabled()); fireEvent.click(check);
+      await waitFor(() => expect(submissions).toHaveLength(2));
+    }
+    expect(submissions).toEqual([sellerDeliveryAbi.encodeFunctionData('reserveDelivery', [7]), sellerDeliveryAbi.encodeFunctionData('publishDelivery', [7, deliveryReference])]);
+    expect(mocks.request.mock.calls.filter(([path]) => path === '/relay/payments')).toHaveLength(selfPay ? 0 : 2);
+    expect(mocks.upload).toHaveBeenCalledOnce(); expect(prompt).not.toHaveBeenCalled();
+    const finalCheck = await screen.findByRole('button', { name: 'Check status' });
+    await waitFor(() => expect(finalCheck).toBeEnabled()); fireEvent.click(finalCheck);
+    await screen.findByText('Content published and finalized. Temporary draft cleared.');
+  } finally { page.unmount(); session.lock(); }
+}, 15000);
 it('keeps case tools contextual and replaces sequence entry with selectable messages', async () => {
   view.order.state = 4; view.eligibility = { requestArbitration: true }; mocks.rows = [{ turn: '0', sender: seller }, { turn: '1', sender: buyer }]; mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Explore arbitration' }));
@@ -358,6 +432,35 @@ it('keeps seller claim review and confirmation in a reopenable dialog', async ()
   fireEvent.click(within(dialog).getByRole('button', { name: 'Close dialog' }));
   fireEvent.click(screen.getByRole('button', { name: 'Continue claim payment' }));
   expect(screen.getByRole('dialog', { name: 'Claim payment' })).toHaveTextContent('Maximum network fee');
+});
+it.each([
+  ['withdrawSeller', false], ['withdrawSeller', true], ['claimResponseTimeout', false], ['claimResponseTimeout', true],
+] as const)('prepares a built-in %s claim on opening and signs once (self paid: %s)', async (kind, selfPay) => {
+  const prompt = vi.fn(async () => false), session = createManagedSession(getBytes(`0x${"56".repeat(32)}`), prompt);
+  mocks.session = session; mocks.address = session.address.toLowerCase(); view.order.seller = mocks.address;
+  view.order.state = kind === 'withdrawSeller' ? 7 : 5; view.eligibility = { [kind]: true };
+  const contract = '0x3333333333333333333333333333333333333333', router = '0x4444444444444444444444444444444444444444';
+  const data = sellerClaimAbi.encodeFunctionData(kind, [7]);
+  const read = mocks.read.getMockImplementation()!, request = mocks.request.getMockImplementation()!;
+  mocks.read.mockImplementation(async (path: string) => path === '/deployment' ? { chainId: 10143, contract, router } : read(path));
+  mocks.request.mockImplementation(async (path: string, ...args: unknown[]) => path === '/transactions/prepare' || path === '/transactions/request'
+    ? { chainId: 10143, to: contract, data, value: '0', gas: '200000', nonce: 0, maxFeePerGas: '1000000000', maxPriorityFeePerGas: '100000000', balance: '1000000000000000000' }
+    : path === '/relay/payments' ? { id: 'claim-job' } : request(path, ...args));
+  mocks.runOperation.mockImplementation(async action => action(session, () => true));
+  const page = mount('/sales/orders/7');
+  try {
+    fireEvent.click(await screen.findByRole('button', { name: 'Claim payment' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Claim payment' });
+    const confirm = await within(dialog).findByRole('button', { name: 'Claim payment' });
+    expect(within(dialog).queryByRole('button', { name: 'Review transaction' })).not.toBeInTheDocument();
+    expect(prompt).not.toHaveBeenCalled(); expect(mocks.runOperation).not.toHaveBeenCalled();
+    if (selfPay) { const toggle = await within(dialog).findByRole('switch'); fireEvent.click(toggle); await waitFor(() => expect(toggle).toBeChecked()); }
+    await waitFor(() => expect(confirm).toBeEnabled()); fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.request.mock.calls.some(([path]) => path === (selfPay ? '/transactions/broadcast' : '/relay/payments'))).toBe(true));
+    expect(prompt).not.toHaveBeenCalled();
+    expect(mocks.runOperation).toHaveBeenCalledOnce();
+    await expect(session.signMessage('unrelated')).rejects.toThrow('declined');
+  } finally { page.unmount(); session.lock(); }
 });
 it('reopens a saved arbitration action in a transaction dialog', async () => {
   view.eligibility = { requestArbitration: true };

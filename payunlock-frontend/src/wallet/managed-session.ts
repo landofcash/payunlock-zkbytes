@@ -6,6 +6,7 @@ import type { ReviewedTypedData, WalletSessionEvent } from "./types";
 import { validateTokenAuthorization } from "./typed-data";
 import { deliveryApproval, type DeliveryAuthorization } from "./delivery-authorization";
 import { purchaseApproval, type PurchaseAuthorization } from "./purchase-authorization";
+import { sellerApproval, type SellerAuthorization } from "./seller-authorization";
 import { receivingMessage, ReceivingContextSchema } from "@/commerce/protocol";
 
 export const SESSION_LIFETIME_MS = 5 * 60 * 1000;
@@ -30,25 +31,27 @@ export function createManagedSession(key: Uint8Array, approve: Approval, lifetim
   let ended = false, busy = false;
   let delivery: Approval | undefined;
   let purchase: Approval | undefined;
+  let seller: Approval | undefined;
   const listeners = new Set<(event: WalletSessionEvent) => void>();
   const timer = setTimeout(lock, expiresAt - Date.now());
   function lock() {
     if (ended) return;
-    ended = true; delivery = undefined; purchase = undefined; clearTimeout(timer); signer.end();
+    ended = true; delivery = undefined; purchase = undefined; seller = undefined; clearTimeout(timer); signer.end();
     for (const listener of listeners) listener("disconnect");
     listeners.clear();
   }
   function check() { if (Date.now() >= expiresAt) lock(); if (ended) throw new Error("Wallet is locked."); }
   async function reviewed<T>(request: Parameters<Approval>[0], sign: () => Promise<T>) {
     check(); if (busy) throw new Error("A wallet request is already pending."); busy = true;
-    try { if (!(purchase ? await purchase(request) : delivery && await delivery(request)) && !await approve(request)) throw new Error("Signing declined."); check(); const result = await sign(); check(); return result; }
+    try { if (!(seller ? await seller(request) : purchase ? await purchase(request) : delivery && await delivery(request)) && !await approve(request)) throw new Error("Signing declined."); check(); const result = await sign(); check(); return result; }
     finally { busy = false; }
   }
   return {
     kind: "builtin" as const, walletName: "Built-in wallet", transport: "managed" as const,
     address: account.address, chainId: "0x279f", expiresAt,
     authorizeDelivery(scope: DeliveryAuthorization) { check(); const approval = deliveryApproval(scope); delivery = approval; return () => { if (delivery === approval) delivery = undefined; }; },
-    authorizePurchase(scope: PurchaseAuthorization) { check(); if (purchase || busy) throw new Error("A wallet request is already pending."); const approval = purchaseApproval(scope); purchase = approval; return () => { if (purchase === approval) purchase = undefined; }; },
+    authorizePurchase(scope: PurchaseAuthorization) { check(); if (seller || purchase || busy) throw new Error("A wallet request is already pending."); const approval = purchaseApproval(scope); purchase = approval; return () => { if (purchase === approval) purchase = undefined; }; },
+    authorizeSeller(scope: SellerAuthorization) { check(); if (seller || purchase || busy) throw new Error("A wallet request is already pending."); const approval = sellerApproval(scope); seller = approval; return () => { if (seller === approval) seller = undefined; }; },
     get locked() { if (Date.now() >= expiresAt) lock(); return ended; },
     signMessage: (message: string) => reviewed({ kind: "message", message }, () => account.signMessage({ message })),
     signTypedData(request: ReviewedTypedData) {

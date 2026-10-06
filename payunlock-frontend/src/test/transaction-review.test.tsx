@@ -3,11 +3,12 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { useState } from "react";
 import { Wallet } from "ethers";
+import { sellerClaimAbi } from "@/wallet/seller-authorization";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Operation } from "@/commerce/purchase-journal";
-const mocks = vi.hoisted(() => ({ read: vi.fn(), request: vi.fn(), save: vi.fn(), runOperation: vi.fn(), signed: vi.fn(), sent: vi.fn() }));
+const mocks = vi.hoisted(() => ({ read: vi.fn(), request: vi.fn(), save: vi.fn(), runOperation: vi.fn(), signed: vi.fn(), sent: vi.fn(), builtin: false }));
 vi.mock("@/commerce/client", async original => ({ ...await original<typeof import("@/commerce/client")>(), useCommerce: () => ({ read: mocks.read, request: mocks.request }) }));
-vi.mock("@/wallet/session-store", () => ({ useSession: () => ({ busy: false, runOperation: mocks.runOperation }) }));
+vi.mock("@/wallet/session-store", () => ({ useSession: () => ({ session: mocks.builtin ? { kind: "builtin", address: signer.address } : undefined, busy: false, runOperation: mocks.runOperation }) }));
 import { ApiError, useCommerce } from "@/commerce/client";
 import { TransactionPanel, journal, prepareOperation } from "@/commerce/ui";
 import { OrderDialog } from "@/commerce/OrderPresentation";
@@ -17,11 +18,11 @@ function operation(changes: Partial<Operation> = {}): Operation { return { id: "
 function Harness({ initial }: { initial: Operation }) {
   const api = useCommerce();
   const [record, setRecord] = useState(initial), [open, setOpen] = useState(true);
-  return open ? <OrderDialog title="Review refund" onClose={() => setOpen(false)}><TransactionPanel record={record} onChange={setRecord} onRetry={record.action ? async () => setRecord(await prepareOperation(api, record, record.action!)) : undefined} compactReview /></OrderDialog> : <p>Dialog closed</p>;
+  return open ? <OrderDialog title="Review refund" onClose={() => setOpen(false)}><TransactionPanel singleApproval={mocks.builtin} record={record} onChange={setRecord} onRetry={record.action ? async () => setRecord(await prepareOperation(api, record, record.action!)) : undefined} compactReview /></OrderDialog> : <p>Dialog closed</p>;
 }
 function mount(initial = operation(), path = "/purchases/7") { render(<MemoryRouter initialEntries={[path]}><Harness initial={initial} /></MemoryRouter>); }
 beforeEach(() => {
-  vi.restoreAllMocks();
+  mocks.builtin = false; vi.restoreAllMocks();
   vi.clearAllMocks();
   vi.spyOn(journal, "save").mockImplementation(mocks.save);
   mocks.read.mockResolvedValue({ chainId: 10143, contract, router });
@@ -30,6 +31,41 @@ beforeEach(() => {
   mocks.signed.mockImplementation(async data => signer.signTypedData(data.domain, data.types, data.message));
   mocks.sent.mockResolvedValue(`0x${"44".repeat(32)}`);
   mocks.runOperation.mockImplementation(async action => action({ address: signer.address, signTypedData: mocks.signed, sendTransaction: mocks.sent }, () => true));
+});
+it.each(['missing', 'accepted', 'settled'] as const)("checks a failed seller relay submission before retrying (%s)", async outcome => {
+  mocks.builtin = true;
+  const action = { kind: 'withdrawSeller' as const, orderId: '7' }, tx = { ...transaction, data: sellerClaimAbi.encodeFunctionData('withdrawSeller', [7]) };
+  let state = 7, fail = true;
+  mocks.request.mockImplementation(async (path: string) => {
+    if (path === '/orders/7') return { order: { seller: signer.address.toLowerCase(), state } };
+    if (path === '/transactions/prepare' || path === '/transactions/request') return tx;
+    if (path === '/relay/payments') { if (fail) throw new Error('Relay connection lost'); return { id: 'retry-job' }; }
+    return {};
+  });
+  mocks.read.mockImplementation(async (path: string) => {
+    if (path.startsWith('/relay/jobs/by-nonce/')) {
+      if (outcome === 'accepted') return { id: 'original-job' };
+      throw new ApiError('RELAY_JOB_NOT_FOUND');
+    }
+    return { chainId: 10143, contract, router };
+  });
+  mount(operation({ action, transaction: tx }), '/sales/orders/7');
+  const confirm = await screen.findByRole('button', { name: 'Claim payment' });
+  await waitFor(() => expect(confirm).toBeEnabled()); fireEvent.click(confirm);
+  const retry = await screen.findByRole('button', { name: 'Try again' });
+  await waitFor(() => expect(retry).toBeEnabled());
+  expect(await screen.findByText('Relay connection lost')).toBeInTheDocument();
+  if (outcome === 'settled') state = 8;
+  fail = false; fireEvent.click(retry);
+  if (outcome === 'missing') {
+    const next = await screen.findByRole('button', { name: 'Claim payment' });
+    await waitFor(() => expect(next).toBeEnabled()); fireEvent.click(next);
+    await waitFor(() => expect(mocks.save).toHaveBeenLastCalledWith(expect.objectContaining({ relayJobId: 'retry-job' })));
+    expect(mocks.request.mock.calls.filter(([path]) => path === '/relay/payments')).toHaveLength(2);
+  } else {
+    await waitFor(() => expect(mocks.save).toHaveBeenLastCalledWith(expect.objectContaining(outcome === 'accepted' ? { relayJobId: 'original-job', progress: 'checking' } : { progress: 'finalized' })));
+    expect(mocks.request.mock.calls.filter(([path]) => path === '/relay/payments')).toHaveLength(1);
+  }
 });
 it("defaults to covered fees, allows switching both ways and keeps one confirmation action", async () => {
   mount();
@@ -90,11 +126,22 @@ it("disables dismissal and duplicate submissions while waiting for the wallet", 
   await waitFor(() => expect(mocks.runOperation).toHaveBeenCalled());
   const dialog = screen.getByRole("dialog");
   expect(within(dialog).getByRole("button", { name: "Close dialog" })).toBeDisabled();
-  expect(within(dialog).getByRole("button", { name: "Close" })).toBeDisabled();
-  expect(within(dialog).getByRole("button", { name: "Check status" })).toBeDisabled();
+  expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+  expect(within(dialog).getByRole("button", { name: "Confirm refund" })).toBeDisabled();
+  expect(mocks.save).not.toHaveBeenCalled();
   fireEvent(dialog, new Event("cancel", { bubbles: true, cancelable: true }));
   expect(dialog).toBeInTheDocument();
-  finish(); await waitFor(() => expect(within(dialog).getByRole("button", { name: "Close" })).toBeEnabled());
+  finish(); await waitFor(() => expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeEnabled());
+});
+it("leaves the review retryable when the wallet locks before signing", async () => {
+  mocks.runOperation.mockRejectedValueOnce(new Error("Wallet is locked."));
+  mount(operation({ payNetworkFeeSelf: true }));
+  const confirm = await screen.findByRole("button", { name: "Confirm refund" });
+  await waitFor(() => expect(confirm).toBeEnabled()); fireEvent.click(confirm);
+  await screen.findByText("Wallet is locked.");
+  expect(confirm).toBeEnabled();
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.request.mock.calls.some(([path]) => path === "/transactions/broadcast")).toBe(false);
 });
 it.each(["checking", "reverted", "finalized"] as const)("does not offer another submission in the %s state", async progress => {
   mount(operation({ progress }));
