@@ -3,6 +3,16 @@ import { reconcileAction } from "../commerce/reconcile";
 const account = `0x${"11".repeat(20)}`, hash = `0x${"22".repeat(32)}`;
 const reference = { serviceId: 1, preparedAt: "1", creator: hash, buyerEnvelope: `0x03${"33".repeat(64)}`, sellerEnvelope: `0x03${"44".repeat(64)}`, contentHash: hash };
 describe("lost-response lifecycle reconciliation", () => {
+  it("recognizes acceptance only for the buyer in the confirmed state", async () => {
+    const api = { request: vi.fn().mockResolvedValue({ order: { buyer: account, state: 7 } }) };
+    const action = { kind: "confirmReceipt" as const, orderId: "1" };
+    expect(await reconcileAction(api, account, action)).toBe(true);
+    expect(await reconcileAction(api, "other", action)).toBe(false);
+    for (const state of [3, 4, 5, 6, 8, 9]) {
+      api.request.mockResolvedValue({ order: { buyer: account, state } });
+      expect(await reconcileAction(api, account, action)).toBe(false);
+    }
+  });
   it("only recovers a matching finalized seller commitment", async () => {
     const api = { request: vi.fn().mockResolvedValue({ order: { seller: account, state: 2, publicationDeadline: "100" } }) };
     expect(await reconcileAction(api, account, { kind: "reserveDelivery", orderId: "1" })).toBe(true);

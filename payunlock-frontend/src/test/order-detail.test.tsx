@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { getBytes, Transaction } from "ethers";
 import { createManagedSession } from "@/wallet/managed-session";
 import type { LabWalletSession } from "@/wallet/types";
-import { sellerDeliveryAbi, sellerClaimAbi } from "@/wallet/seller-authorization";
+import { sellerDeliveryAbi, orderActionAbi } from "@/wallet/seller-authorization";
 const deliveryReference = { serviceId: 1, preparedAt: "100", creator: `0x${"11".repeat(32)}`, buyerEnvelope: `0x03${"11".repeat(64)}`, sellerEnvelope: `0x03${"22".repeat(64)}`, contentHash: `0x${"33".repeat(32)}` };
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -109,6 +109,97 @@ it('places delivery before acceptance and explains the consequence before prepar
   expect(within(dialog).getByText(/ends your ability to dispute/)).toBeInTheDocument();
   expect(within(dialog).getByRole('button', { name: 'Review transaction' })).toBeInTheDocument();
   expect(mocks.request.mock.calls.some(([path]) => path === '/transactions/prepare')).toBe(false);
+});
+async function acceptanceReview(builtin: boolean, selfPay: boolean, wrongOrder = false) {
+  const prompt = vi.fn(async () => true), session = createManagedSession(getBytes(`0x${"67".repeat(32)}`), prompt);
+  mocks.session = builtin ? session : { ...session, kind: 'metamask' };
+  mocks.address = session.address.toLowerCase(); view.order.buyer = mocks.address;
+  mocks.rows = [{ turn: '0', sender: seller, commitment: 'hash', reference: { serviceId: 1 } }];
+  mocks.restoreReceiving.mockResolvedValue({ privateKey: new Uint8Array(32) });
+  mocks.openDelivery.mockResolvedValue({ payload: { text: 'Reviewed delivery content', tickets: [] } });
+  mocks.runOperation.mockImplementation(async action => action(mocks.session, () => true));
+  const contract = '0x3333333333333333333333333333333333333333', router = '0x4444444444444444444444444444444444444444';
+  const data = orderActionAbi.encodeFunctionData('confirmReceipt', [wrongOrder ? 99 : 7]);
+  const read = mocks.read.getMockImplementation()!, request = mocks.request.getMockImplementation()!;
+  mocks.read.mockImplementation(async (path: string) => path === '/deployment' ? { chainId: 10143, contract, router } : read(path));
+  mocks.request.mockImplementation(async (path: string, ...args: unknown[]) => {
+    if (path === '/transactions/prepare' || path === '/transactions/request') {
+      if (!view.eligibility.confirmReceipt) throw new Error('This action is no longer available.');
+      return { chainId: 10143, to: contract, data, value: '0', gas: '100000', nonce: 0, maxFeePerGas: '1000000000', maxPriorityFeePerGas: '100000000', balance: '1000000000000000000' };
+    }
+    if (path === '/relay/payments') return { id: 'acceptance-job' };
+    return request(path, ...args);
+  });
+  const page = mount('/purchases/7');
+  try {
+    const open = await screen.findByRole('button', { name: 'Open delivery' });
+    await waitFor(() => expect(open).toBeEnabled()); fireEvent.click(open);
+    await screen.findByText('Reviewed delivery content');
+    const accept = screen.getByRole('button', { name: 'Accept delivery' });
+    await waitFor(() => expect(accept).toBeEnabled()); fireEvent.click(accept);
+    const dialog = await screen.findByRole('dialog', { name: 'Accept delivery' });
+    if (!builtin) fireEvent.click(within(dialog).getByRole('button', { name: 'Review transaction' }));
+    const confirm = await within(dialog).findByRole('button', { name: builtin ? 'Confirm acceptance' : 'Accept delivery' });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    if (selfPay) { const toggle = within(dialog).getByRole('switch'); fireEvent.click(toggle); await waitFor(() => expect(toggle).toBeChecked()); }
+    await waitFor(() => expect(confirm).toBeEnabled());
+    mocks.runOperation.mockClear();
+    return { prompt, session, page, dialog, confirm };
+  } catch (error) { page.unmount(); session.lock(); throw error; }
+}
+it.each([[true, false], [true, true], [false, false], [false, true]])('reviews acceptance once for built-in wallets and preserves device approval (builtin: %s, self paid: %s)', async (builtin, selfPay) => {
+  const { prompt, session, page, dialog, confirm } = await acceptanceReview(builtin!, selfPay!);
+  try {
+    expect(within(dialog).getByText(/Accepting delivery ends your ability to dispute/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Review transaction' })).not.toBeInTheDocument();
+    expect(prompt).not.toHaveBeenCalled(); expect(mocks.runOperation).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.request.mock.calls.some(([path]) => path === (selfPay ? '/transactions/broadcast' : '/relay/payments'))).toBe(true));
+    expect(mocks.runOperation).toHaveBeenCalledOnce();
+    expect(prompt).toHaveBeenCalledTimes(builtin ? 0 : 1);
+    await session.signMessage('unrelated');
+    expect(prompt).toHaveBeenCalledTimes(builtin ? 1 : 2); // The scoped approval was released.
+  } finally { page.unmount(); session.lock(); }
+});
+it('can cancel the built-in acceptance review without signing or submitting', async () => {
+  const { prompt, session, page, dialog } = await acceptanceReview(true, false);
+  try {
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: 'Accept delivery' })).not.toBeInTheDocument();
+    expect(prompt).not.toHaveBeenCalled(); expect(mocks.runOperation).not.toHaveBeenCalled();
+    expect(mocks.request.mock.calls.some(([path]) => ['/relay/payments', '/transactions/broadcast'].includes(path))).toBe(false);
+  } finally { page.unmount(); session.lock(); }
+});
+it.each([false, true])('rejects a different order in an acceptance request before signing (self paid: %s)', async selfPay => {
+  const { prompt, session, page, confirm } = await acceptanceReview(true, selfPay, true);
+  try {
+    fireEvent.click(confirm);
+    await screen.findByText('Order action changed. Review it again.');
+    expect(prompt).not.toHaveBeenCalled(); expect(mocks.runOperation).not.toHaveBeenCalled();
+    expect(mocks.request.mock.calls.some(([path]) => ['/relay/payments', '/transactions/broadcast'].includes(path))).toBe(false);
+  } finally { page.unmount(); session.lock(); }
+});
+it('stops acceptance if eligibility changed after review', async () => {
+  const { prompt, session, page, confirm } = await acceptanceReview(true, false);
+  try {
+    view.order.state = 6; view.eligibility = {};
+    fireEvent.click(confirm);
+    await screen.findByText('This action is no longer available.');
+    expect(prompt).not.toHaveBeenCalled(); expect(mocks.runOperation).not.toHaveBeenCalled();
+  } finally { page.unmount(); session.lock(); }
+});
+it('requires another review when acceptance fees increase', async () => {
+  const { prompt, session, page, confirm } = await acceptanceReview(true, true);
+  try {
+    const request = mocks.request.getMockImplementation()!;
+    mocks.request.mockImplementation(async (path: string, ...args: unknown[]) => {
+      const value = await request(path, ...args);
+      return path === '/transactions/prepare' ? { ...value, maxFeePerGas: '2000000000' } : value;
+    });
+    fireEvent.click(confirm);
+    await screen.findByText('Transaction details changed. Prepare and review again.');
+    expect(prompt).not.toHaveBeenCalled(); expect(mocks.runOperation).not.toHaveBeenCalled();
+  } finally { page.unmount(); session.lock(); }
 });
 it('keeps dispute entry available with missing content and opens the composer only on request', async () => {
   mount(); const open = await screen.findByRole('button', { name: 'Open delivery' });
@@ -440,7 +531,7 @@ it.each([
   mocks.session = session; mocks.address = session.address.toLowerCase(); view.order.seller = mocks.address;
   view.order.state = kind === 'withdrawSeller' ? 7 : 5; view.eligibility = { [kind]: true };
   const contract = '0x3333333333333333333333333333333333333333', router = '0x4444444444444444444444444444444444444444';
-  const data = sellerClaimAbi.encodeFunctionData(kind, [7]);
+  const data = orderActionAbi.encodeFunctionData(kind, [7]);
   const read = mocks.read.getMockImplementation()!, request = mocks.request.getMockImplementation()!;
   mocks.read.mockImplementation(async (path: string) => path === '/deployment' ? { chainId: 10143, contract, router } : read(path));
   mocks.request.mockImplementation(async (path: string, ...args: unknown[]) => path === '/transactions/prepare' || path === '/transactions/request'

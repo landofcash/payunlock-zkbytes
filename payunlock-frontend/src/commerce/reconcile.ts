@@ -8,6 +8,9 @@ export async function reconcileAction(api: Reader, account: string, action: Acti
   if (!("orderId" in action)) return false;
   const view = await api.request<OrderView>(`/orders/${action.orderId}`), o = view.order;
   switch (action.kind) {
+    // PaidOut alone does not prove acceptance: a deadline or arbitration can
+    // also release funds. After settlement, use the saved job/transaction result.
+    case "confirmReceipt": return o.buyer === account && o.state === 7;
     case "withdrawSeller": return o.seller === account && o.state === 8;
     case "claimResponseTimeout": return o.seller === account ? o.state === 8 : o.buyer === account && o.state === 9;
     case "reserveDelivery": return o.seller === account && BigInt(o.publicationDeadline) > 0n;

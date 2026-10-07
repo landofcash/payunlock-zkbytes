@@ -8,7 +8,7 @@ import { IndexedStore } from "@/storage/local-store";
 import { useSession } from "@/wallet/session-store";
 import { walletErrorKind } from "@/wallet/errors";
 import type { ReviewedTransaction } from "@/wallet/managed-session";
-import { sellerClaimAbi } from "@/wallet/seller-authorization";
+import { orderActionAbi } from "@/wallet/seller-authorization";
 import { ApiError, useCommerce, useCommerceAccess, type Action, type Deployment, type PreparedTx, type Terms } from "./client";
 import type { ReviewedTypedData } from "@/wallet/types";
 import { PurchaseJournal, purchaseMatches, type Operation } from "./purchase-journal";
@@ -83,12 +83,12 @@ export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = f
     const active = await api.read<{ chainId: number; contract: string }>("/deployment");
     if (record.deployment.chainId !== active.chainId || record.deployment.contract.toLowerCase() !== active.contract.toLowerCase()) throw new Error("This operation belongs to an abandoned deployment.");
   }
-  const sellerClaim = singleApproval && wallet.session?.kind === "builtin" && (record.action?.kind === "withdrawSeller" || record.action?.kind === "claimResponseTimeout");
-  const recoverableSellerAction = wallet.session?.kind === "builtin" && ["withdrawSeller", "claimResponseTimeout", "reserveDelivery", "publishDelivery"].includes(record.action?.kind ?? "");
+  const scopedOrderAction = singleApproval && wallet.session?.kind === "builtin" && ["withdrawSeller", "claimResponseTimeout", "confirmReceipt"].includes(record.action?.kind ?? "");
+  const recoverableOrderAction = wallet.session?.kind === "builtin" && ["withdrawSeller", "claimResponseTimeout", "reserveDelivery", "publishDelivery", "confirmReceipt"].includes(record.action?.kind ?? "");
   async function submit(manual = true) {
     try {
       await assertDeployment();
-      if (recoverableSellerAction && record.action && await reconcileAction(api, record.account, record.action)) {
+      if (recoverableOrderAction && record.action && await reconcileAction(api, record.account, record.action)) {
         await save({ ...record, progress: "finalized" }); await onFinalized?.(); return;
       }
       if (manual) onApprove?.(!coversFees || paySelf, router);
@@ -112,7 +112,7 @@ export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = f
       const job = await api.read<{ status: string; transactionHash: string | null }>(`/relay/jobs/${record.relayJobId}`);
       if (job.status === "finalized") { await save({ ...record, progress: "finalized", activeHash: job.transactionHash ?? undefined }); await onFinalized?.(); }
       else if (job.status === "failed") {
-        if (recoverableSellerAction && record.action && await reconcileAction(api, record.account, record.action)) { await save({ ...record, progress: "finalized" }); await onFinalized?.(); }
+        if (recoverableOrderAction && record.action && await reconcileAction(api, record.account, record.action)) { await save({ ...record, progress: "finalized" }); await onFinalized?.(); }
         else { onSubmissionError?.(); await save({ ...record, progress: "reverted", relayJobId: undefined }); }
       }
       return;
@@ -158,7 +158,7 @@ export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = f
     if (!record.action || !record.transaction) throw new Error("Review the transaction first.");
     const fresh = await api.request<PreparedTx>("/transactions/prepare", record.action);
     const tx = record.transaction;
-    if (sellerClaim && (tx.chainId !== 10143 || tx.to.toLowerCase() !== record.deployment.contract.toLowerCase() || tx.value !== "0" || tx.data.toLowerCase() !== sellerClaimAbi.encodeFunctionData(record.action.kind, [record.orderId]).toLowerCase())) throw new Error("Claim details changed. Review the claim again.");
+    if (scopedOrderAction && (tx.chainId !== 10143 || tx.to.toLowerCase() !== record.deployment.contract.toLowerCase() || tx.value !== "0" || tx.data.toLowerCase() !== orderActionAbi.encodeFunctionData(record.action.kind, [record.orderId]).toLowerCase())) throw new Error("Order action changed. Review it again.");
     if (fresh.to !== tx.to || fresh.data !== tx.data || fresh.value !== tx.value || fresh.nonce !== tx.nonce || BigInt(fresh.maxFeePerGas) > BigInt(tx.maxFeePerGas) || BigInt(fresh.gas) > BigInt(tx.gas)) throw new Error("Transaction details changed. Prepare and review again.");
     let pending = record;
     await wallet.runOperation(async (session, isCurrent) => {
@@ -168,7 +168,7 @@ export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = f
         let raw: string;
         let release: (() => void) | undefined;
         try {
-          release = sellerClaim ? session.authorizePurchase?.({ transactions: [{ transaction: reviewed, maxNetworkFee: reviewed.gas * reviewed.maxFeePerGas }] }) : undefined;
+          release = scopedOrderAction ? session.authorizePurchase?.({ transactions: [{ transaction: reviewed, maxNetworkFee: reviewed.gas * reviewed.maxFeePerGas }] }) : undefined;
           raw = await session.signTransaction(reviewed);
         }
         finally { release?.(); }
@@ -194,7 +194,7 @@ export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = f
     await assertDeployment();
     if (!router || !record.action || !canRelay(record.action) || record.progress !== "review") throw new Error("This action is not available for relaying.");
     const fresh = await api.request<{ chainId: number; to: string; data: string; value: string }>("/transactions/request", record.action);
-    if (sellerClaim && fresh.data.toLowerCase() !== sellerClaimAbi.encodeFunctionData(record.action.kind, [record.orderId]).toLowerCase()) throw new Error("Claim details changed. Review the claim again.");
+    if (scopedOrderAction && fresh.data.toLowerCase() !== orderActionAbi.encodeFunctionData(record.action.kind, [record.orderId]).toLowerCase()) throw new Error("Order action changed. Review it again.");
     if (fresh.chainId !== 10143 || fresh.to.toLowerCase() !== record.deployment.contract.toLowerCase() || fresh.value !== "0" ||
         record.transaction && (fresh.data !== record.transaction.data || fresh.to !== record.transaction.to)) throw new Error("Action details changed. Review them again.");
     const now = Math.floor(Date.now() / 1000), nonce = randomId(), validAfter = "0", validBefore = String(now + 3600);
@@ -207,7 +207,7 @@ export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = f
         recipient: record.deployment.contract, expiresAt: new Date(Number(validBefore) * 1000).toISOString() } };
     const signature = await wallet.runOperation(async (session, isCurrent) => {
       if (!session.signTypedData || !isCurrent() || session.address.toLowerCase() !== record.account) throw new Error("This wallet cannot sign action authorizations. Use direct submission.");
-      const release = sellerClaim ? session.authorizePurchase?.({ transactions: [], typedData }) : undefined;
+      const release = scopedOrderAction ? session.authorizePurchase?.({ transactions: [], typedData }) : undefined;
       let signed: string;
       try { signed = await session.signTypedData(typedData); } finally { release?.(); }
       if (!isCurrent() || verifyTypedData(typedData.domain, typedData.types, typedData.message, signed).toLowerCase() !== record.account) throw new Error("Wallet changed while signing.");
@@ -231,7 +231,7 @@ export function TransactionPanel({ record, onChange, onFinalized, autoSubmit = f
     setPaySelf(selfPay);
   }
   const orderPath = record.orderId ? record.requestId || location.pathname.startsWith("/purchases/") ? `/purchases/${record.orderId}` : location.pathname.startsWith("/sales/") ? `/sales/orders/${record.orderId}` : location.pathname.startsWith("/arbitration/") ? `/arbitration/${record.orderId}` : undefined : undefined;
-  const uncertainRetry = recoverableSellerAction && record.progress === "checking" && !!record.relayNonce && !record.relayJobId && !record.activeHash;
+  const uncertainRetry = recoverableOrderAction && record.progress === "checking" && !!record.relayNonce && !record.relayJobId && !record.activeHash;
   if (compactReview) return <TransactionReview record={record} summary={summary} subject={subject} confirmLabel={confirmLabel} orderPath={orderPath} canCoverFees={coversFees} checkingCoverage={!buyerView && !coverageLoaded} selfPay={!coversFees || paySelf} busy={task.busy || wallet.busy} error={task.error} singleApproval={singleApproval} maximumFee={maximumFee} onFeeChange={value => void task.run(() => changeFeeMode(value))} onConfirm={() => void task.run(() => submit())} onCheck={() => void task.run(check)} onRetry={uncertainRetry ? () => void task.run(retryUncertain) : onRetry ? () => void task.run(onRetry) : undefined} retryPending={uncertainRetry} retryLabel={uncertainRetry ? "Try again" : retryLabel} />;
   if (buyerView) return <section className="transaction-panel buyer-transaction"><p role="status">{record.progress === "checking" ? "Waiting for confirmation..." : record.progress === "reverted" ? "The transaction did not complete. Return to review before retrying." : "Review and confirm"}</p>
     {record.transaction && <><p>Maximum network fee: <strong>{formatUnits(BigInt(record.transaction.gas) * BigInt(record.transaction.maxFeePerGas), 18)} MON</strong></p>{record.progress === "review" && <Button icon={ButtonSend} disabled={task.busy || wallet.busy} onClick={() => void task.run(send)}>{record.action?.kind === "approve" ? "Approve token payment" : "Confirm payment"}</Button>}</>}

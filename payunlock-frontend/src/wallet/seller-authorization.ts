@@ -3,7 +3,7 @@ import type { Approval } from "./managed-session";
 
 const reference = "(uint32 serviceId,uint64 preparedAt,bytes32 creator,bytes buyerEnvelope,bytes sellerEnvelope,bytes32 contentHash)";
 export const sellerDeliveryAbi = new Interface(["function reserveDelivery(uint256 id)", `function publishDelivery(uint256 id,${reference} contentRef)`]);
-export const sellerClaimAbi = new Interface(["function withdrawSeller(uint256 id)", "function claimResponseTimeout(uint256 id)"]);
+export const orderActionAbi = new Interface(["function withdrawSeller(uint256 id)", "function claimResponseTimeout(uint256 id)", "function confirmReceipt(uint256 id)"]);
 export { DELIVERY_GAS_BOUND } from "../commerce/delivery-fees";
 export type SellerAuthorization = {
   account: string; contract: string; calls: string[];

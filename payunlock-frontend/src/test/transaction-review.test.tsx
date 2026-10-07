@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { useState } from "react";
 import { Wallet } from "ethers";
-import { sellerClaimAbi } from "@/wallet/seller-authorization";
+import { orderActionAbi } from "@/wallet/seller-authorization";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Operation } from "@/commerce/purchase-journal";
 const mocks = vi.hoisted(() => ({ read: vi.fn(), request: vi.fn(), save: vi.fn(), runOperation: vi.fn(), signed: vi.fn(), sent: vi.fn(), builtin: false }));
@@ -32,12 +32,13 @@ beforeEach(() => {
   mocks.sent.mockResolvedValue(`0x${"44".repeat(32)}`);
   mocks.runOperation.mockImplementation(async action => action({ address: signer.address, signTypedData: mocks.signed, sendTransaction: mocks.sent }, () => true));
 });
-it.each(['missing', 'accepted', 'settled'] as const)("checks a failed seller relay submission before retrying (%s)", async outcome => {
+it.each((['withdrawSeller', 'confirmReceipt'] as const).flatMap(kind => (['missing', 'accepted', 'settled'] as const).map(outcome => ({ kind, outcome }))))("checks a failed $kind relay submission before retrying ($outcome)", async ({ kind, outcome }) => {
   mocks.builtin = true;
-  const action = { kind: 'withdrawSeller' as const, orderId: '7' }, tx = { ...transaction, data: sellerClaimAbi.encodeFunctionData('withdrawSeller', [7]) };
-  let state = 7, fail = true;
+  const action = { kind, orderId: '7' }, tx = { ...transaction, data: orderActionAbi.encodeFunctionData(kind, [7]) };
+  const label = kind === 'confirmReceipt' ? 'Accept delivery' : 'Claim payment';
+  let state = kind === 'confirmReceipt' ? 3 : 7, fail = true;
   mocks.request.mockImplementation(async (path: string) => {
-    if (path === '/orders/7') return { order: { seller: signer.address.toLowerCase(), state } };
+    if (path === '/orders/7') return { order: { buyer: signer.address.toLowerCase(), seller: signer.address.toLowerCase(), state } };
     if (path === '/transactions/prepare' || path === '/transactions/request') return tx;
     if (path === '/relay/payments') { if (fail) throw new Error('Relay connection lost'); return { id: 'retry-job' }; }
     return {};
@@ -49,16 +50,16 @@ it.each(['missing', 'accepted', 'settled'] as const)("checks a failed seller rel
     }
     return { chainId: 10143, contract, router };
   });
-  mount(operation({ action, transaction: tx }), '/sales/orders/7');
-  const confirm = await screen.findByRole('button', { name: 'Claim payment' });
+  mount(operation({ action, transaction: tx }), kind === 'confirmReceipt' ? '/purchases/7' : '/sales/orders/7');
+  const confirm = await screen.findByRole('button', { name: label });
   await waitFor(() => expect(confirm).toBeEnabled()); fireEvent.click(confirm);
   const retry = await screen.findByRole('button', { name: 'Try again' });
   await waitFor(() => expect(retry).toBeEnabled());
   expect(await screen.findByText('Relay connection lost')).toBeInTheDocument();
-  if (outcome === 'settled') state = 8;
+  if (outcome === 'settled') state = kind === 'confirmReceipt' ? 7 : 8;
   fail = false; fireEvent.click(retry);
   if (outcome === 'missing') {
-    const next = await screen.findByRole('button', { name: 'Claim payment' });
+    const next = await screen.findByRole('button', { name: label });
     await waitFor(() => expect(next).toBeEnabled()); fireEvent.click(next);
     await waitFor(() => expect(mocks.save).toHaveBeenLastCalledWith(expect.objectContaining({ relayJobId: 'retry-job' })));
     expect(mocks.request.mock.calls.filter(([path]) => path === '/relay/payments')).toHaveLength(2);
