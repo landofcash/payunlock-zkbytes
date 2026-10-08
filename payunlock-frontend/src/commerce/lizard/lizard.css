@@ -1,0 +1,18 @@
+.hero-lizard-layer {
+  position: absolute;
+  inset-block: 0 -30px;
+  left: 50%;
+  width: 100%;
+  transform: translateX(-50%);
+  overflow: clip;
+  pointer-events: none;
+  z-index: 2;
+}
+.hero-lizard-layer * { pointer-events: none; }
+.hero-lizard-actor { position: absolute; top: 0; left: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; }
+.hero-lizard-actor > svg { position: absolute; max-width: none; overflow: visible; filter: drop-shadow(0 2px 2px #0003); }
+.hero-lizard-actor .pico-head { animation: none !important; transform-origin: 178px 142px; }
+.hero-lizard-contact { position: absolute; width: 16px; height: 16px; border: 1px solid #df6253; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0; }
+@media (max-width: 1023px), (hover: none), (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .hero-lizard-layer { display: none; }
+}

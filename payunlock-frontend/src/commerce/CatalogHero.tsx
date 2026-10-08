@@ -1,10 +1,11 @@
 import { ArrowRight, Box } from "lucide-react";
 import { useReducedMotion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { DiaTextReveal } from "@/components/ui/dia-text-reveal";
 import { Highlighter } from "@/components/ui/highlighter";
+import { HeroLizard } from "./HeroLizard";
 
 const revealColors = ["var(--accent)", "var(--accent-soft)", "var(--text)", "var(--accent)"];
 
@@ -41,6 +42,7 @@ function HighlightedDescription({ text, highlight, active }: { text: string; hig
 }
 
 export function CatalogHero() {
+  const heroRef = useRef<HTMLElement>(null);
   const [active, setActive] = useState(0);
   const [hovered, setHovered] = useState(false), [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(document.hidden);
@@ -56,7 +58,7 @@ export function CatalogHero() {
     return () => window.clearTimeout(timer);
   }, [active, hovered, focused, hidden, reducedMotion]);
 
-  return <section className="hero" aria-label="About PayUnlock" aria-roledescription="carousel"
+  return <section ref={heroRef} className="hero" aria-label="About PayUnlock" aria-roledescription="carousel"
     onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
     onFocusCapture={() => setFocused(true)} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
     <div className="hero-backdrop" aria-hidden="true">
@@ -80,6 +82,7 @@ export function CatalogHero() {
       {slides.map((slide, index) => <button key={slide.title} type="button" className="hero-slide-dot"
         aria-label={`Show message ${index + 1}: ${slide.title.replace("\n", " ")}`} aria-pressed={active === index} onClick={() => setActive(index)}><span /></button>)}
     </div>
-    <div className="actions"><Button asChild variant="outline" className="rainbow-button rainbow-outline"><Link to="/create"><Box aria-hidden="true" />Create an offer</Link></Button><Button asChild variant="outline" className="rainbow-button rainbow-outline"><Link to="/discover"><ArrowRight aria-hidden="true" />Explore offers</Link></Button></div>
+    <div className="actions"><Button asChild variant="outline" className="rainbow-button rainbow-outline"><Link to="/create"><Box data-lizard-target aria-hidden="true" />Create an offer</Link></Button><Button asChild variant="outline" className="rainbow-button rainbow-outline"><Link to="/discover"><ArrowRight data-lizard-target aria-hidden="true" />Explore offers</Link></Button></div>
+    <HeroLizard heroRef={heroRef} />
   </section>;
 }
