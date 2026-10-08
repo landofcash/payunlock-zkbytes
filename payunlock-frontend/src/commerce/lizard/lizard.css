@@ -10,9 +10,15 @@
 }
 .hero-lizard-layer * { pointer-events: none; }
 .hero-lizard-actor { position: absolute; top: 0; left: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; }
-.hero-lizard-actor > svg { position: absolute; max-width: none; overflow: visible; filter: drop-shadow(0 2px 2px #0003); }
+.hero-lizard-actor > svg { position: absolute; max-width: none; overflow: visible; filter: drop-shadow(0 1px .6px #0002); }
 .hero-lizard-actor .pico-head { animation: none !important; transform-origin: 178px 142px; }
-.hero-lizard-contact { position: absolute; width: 16px; height: 16px; border: 1px solid #df6253; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0; }
+.hero-lizard-contact { position: absolute; width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent), color-mix(in srgb, var(--accent) 20%, transparent) 40%, transparent 72%); transform: translate(-50%, -50%); opacity: 0; }
+.hero [data-lizard-target] { transform-box: border-box; transform-origin: center; scale: calc(1 + var(--lizard-icon-pulse, 0) * .07); }
+body .hero-lizard-peek { position: absolute; z-index: 3; width: 44px; height: 52px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0 12px 12px 0; background: transparent; box-shadow: none; display: flex; align-items: center; justify-content: flex-start; overflow: hidden; cursor: pointer; }
+.hero-lizard-peek > svg { flex: none; width: 24px; height: 37.5px; overflow: hidden; }
+body .hero-lizard-peek:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+body .hero-lizard-peek:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+body .hero-lizard-peek[hidden] { display: none; }
 @media (max-width: 1023px), (hover: none), (pointer: coarse), (prefers-reduced-motion: reduce) {
-  .hero-lizard-layer { display: none; }
+  .hero-lizard-layer, body .hero-lizard-peek { display: none; }
 }
