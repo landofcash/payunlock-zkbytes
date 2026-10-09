@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" role="img" aria-labelledby="title desc">
+  <title id="title">PayUnlock architecture</title>
+  <desc id="desc">The browser connects to the API, zkbytes storage, and Monad escrow. The API uses PostgreSQL, an optional relayer, and Envio with Hasura for indexed events.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="m0 0 10 5-10 5" fill="#9986cc"/></marker></defs>
+  <rect width="1200" height="660" rx="20" fill="#151225"/>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <text x="48" y="58" fill="#ffffff" font-size="28" font-weight="700">Payments on-chain. Content encrypted.</text>
+    <text x="48" y="90" fill="#bfb6d3" font-size="16">PayUnlock / service architecture</text>
+    <g fill="none" stroke="#9986cc" stroke-width="2" marker-end="url(#arrow)">
+      <path d="M355 204H460"/><path d="M210 250V389"/><path d="M355 224H410V564H850"/>
+      <path d="M740 196H850"/><path d="M565 250V389"/><path d="M635 250V303H995V389"/>
+      <path d="M740 433H790V549H850"/><path d="M995 510V470"/>
+    </g>
+    <g fill="#bfb6d3" font-size="14">
+      <text x="375" y="185">HTTPS</text><text x="224" y="310">Ciphertext</text><text x="224" y="332">upload / recovery</text>
+      <text x="433" y="594">Wallet transactions</text><text x="757" y="175">App data</text>
+      <text x="578" y="334">Signed relay jobs</text><text x="782" y="292">Indexed order state</text>
+      <text x="806" y="491">Authorizations</text><text x="1010" y="493">Events</text>
+    </g>
+    <g stroke="#4d426c" stroke-width="1.5" fill="#231e36">
+      <rect x="65" y="150" width="290" height="100" rx="14"/><rect x="460" y="150" width="280" height="100" rx="14"/>
+      <rect x="850" y="150" width="290" height="100" rx="14"/><rect x="65" y="390" width="290" height="100" rx="14" stroke="#6b9c57"/>
+      <rect x="460" y="390" width="280" height="100" rx="14"/><rect x="850" y="390" width="290" height="80" rx="14"/>
+      <rect x="850" y="510" width="290" height="100" rx="14" stroke="#9c81e8"/>
+    </g>
+    <g font-size="21" font-weight="650" fill="#ffffff">
+      <text x="88" y="190">Browser app</text><text x="483" y="190">PayUnlock API</text><text x="873" y="190">PostgreSQL</text>
+      <text x="88" y="430" fill="#a2ef72">zkbytes</text><text x="483" y="430">Optional relayer</text><text x="873" y="423">Envio + Hasura</text>
+      <text x="873" y="550" fill="#c9b4ff">Monad V5 escrow</text>
+    </g>
+    <g font-size="15" fill="#bfb6d3">
+      <text x="88" y="219">React / wallets / encryption</text><text x="483" y="219">Fastify / auth / catalog / jobs</text><text x="873" y="219">Catalog / sessions / relay jobs</text>
+      <text x="88" y="459">Encrypted content storage</text><text x="483" y="459">Submits signed authorizations</text><text x="873" y="451">Events / GraphQL / separate DB</text>
+      <text x="873" y="579">Payments / settlement / disputes</text>
+    </g>
+    <text x="48" y="633" fill="#bfb6d3" font-size="13">Arrows show principal interactions; the indexer reads public contract events.</text>
+  </g>
+</svg>

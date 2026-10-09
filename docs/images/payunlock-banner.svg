@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
+  <title id="title">PayUnlock</title>
+  <desc id="desc">Digital commerce. Private delivery. Powered by zkbytes on Monad.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#141127"/><stop offset="1" stop-color="#30245b"/></linearGradient>
+    <linearGradient id="accent"><stop stop-color="#b99aff"/><stop offset="1" stop-color="#a2ef72"/></linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48" fill="none" stroke="#ffffff" stroke-opacity=".035"/></pattern>
+  </defs>
+  <rect width="1280" height="400" rx="24" fill="url(#bg)"/>
+  <rect width="1280" height="400" rx="24" fill="url(#grid)"/>
+  <circle cx="1160" cy="40" r="220" fill="#836ef9" opacity=".08"/>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <text x="80" y="134" fill="#ffffff" font-size="68" font-weight="750" letter-spacing="-2">PayUnlock</text>
+    <text x="80" y="214" fill="#ffffff" font-size="38" font-weight="600">Digital commerce. Private delivery.</text>
+    <text x="80" y="260" fill="#c3bada" font-size="22">On-chain escrow meets encrypted content.</text>
+    <rect x="80" y="306" width="282" height="40" rx="20" fill="#ffffff" fill-opacity=".07" stroke="#ffffff" stroke-opacity=".12"/>
+    <text x="100" y="332" fill="#a2ef72" font-size="16" font-weight="600">Powered by zkbytes on Monad</text>
+  </g>
+  <g transform="translate(960 100)" fill="none" stroke="url(#accent)" stroke-width="3">
+    <rect x="0" y="52" width="152" height="150" rx="24"/>
+    <path d="M35 52V22a41 41 0 0 1 82 0" stroke-linecap="round"/>
+    <circle cx="76" cy="118" r="15"/>
+    <path d="M76 133v25M-70 100h42M-100 127h72M-70 154h42" stroke-linecap="round"/>
+  </g>
+</svg>
