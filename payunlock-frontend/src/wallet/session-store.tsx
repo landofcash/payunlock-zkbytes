@@ -1,40 +1,30 @@
-﻿import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { checkCompatibility } from "./compatibility";
-import {
-  deriveIdentity,
-  validateLabel,
-  type ReceivingIdentity,
-} from "@/exchange/identity";
-import {
-  walletErrorKind,
-  WalletError,
-  walletErrorMessages,
-  type WalletErrorKind,
-} from "./errors";
-import { metamaskAdapter } from "./metamask-adapter";
-import { IDENTITY_PROFILE } from "@/exchange/identity";
+﻿import {createContext, type ReactNode, useContext, useEffect, useRef, useState,} from "react";
+import {checkCompatibility} from "./compatibility";
+import {deriveIdentity, IDENTITY_PROFILE, type ReceivingIdentity, validateLabel,} from "@/exchange/identity";
+import {WalletError, walletErrorKind, type WalletErrorKind, walletErrorMessages,} from "./errors";
+import {metamaskAdapter} from "./metamask-adapter";
 import {
   IDENTITY_STORAGE_KEY,
   identityId,
   mergeIdentities,
-  readSavedIdentities,
   parseIdentityBackup,
-  serializeIdentityBackup,
+  readSavedIdentities,
   type SavedIdentity,
+  serializeIdentityBackup,
 } from "@/exchange/saved-identities";
-import type { LabWalletAdapter, LabWalletSession } from "./types";
-import { clearItemKeys, encodeBase64, type ItemKeyPair } from "@zkbytes/sdk";
-import { canonical } from "@/crypto/encoding";
-import { restoreReceivingKeys, type ReceivingContext } from "@/commerce/protocol";
-import { VAULT_EVENT, VAULT_CHANGE_KEY } from "./vault";
-import { LAST_USED_EVENT, LAST_USED_KEY, readLastUsedAccount, rememberLastUsedAccount, type LastUsedAccount } from "./last-used";
+import type {LabWalletAdapter, LabWalletSession} from "./types";
+import {clearItemKeys, encodeBase64, type ItemKeyPair} from "@zkbytes/sdk";
+import {canonical} from "@/crypto/encoding";
+import {type ReceivingContext, restoreReceivingKeys} from "@/commerce/protocol";
+import {VAULT_CHANGE_KEY, VAULT_EVENT} from "./vault";
+import {
+  LAST_USED_EVENT,
+  LAST_USED_KEY,
+  type LastUsedAccount,
+  readLastUsedAccount,
+  rememberLastUsedAccount
+} from "./last-used";
+
 export const IDLE_LOCK_MS = 2 * 60 * 1000;
 
 type Compatibility =
@@ -62,7 +52,7 @@ type SessionState = {
     operation: (privateKey: Uint8Array, isCurrent: () => boolean) => Promise<T>,
   ): Promise<T>;
   runOfferKeysOperation<T>(context: ReceivingContext, expectedPublicKey: string | undefined,
-    operation: (keys: ItemKeyPair, session: LabWalletSession, isCurrent: () => boolean) => Promise<T>): Promise<T>;
+                           operation: (keys: ItemKeyPair, session: LabWalletSession, isCurrent: () => boolean) => Promise<T>): Promise<T>;
   runOperation<T>(
     operation: (
       session: LabWalletSession,
@@ -87,7 +77,8 @@ type SessionState = {
   testCompatibility(): Promise<void>;
 };
 const Context = createContext<SessionState | null>(null);
-export function SessionProvider({ children }: { children: ReactNode }) {
+
+export function SessionProvider({children}: { children: ReactNode }) {
   const [lastUsed, setLastUsed] = useState(readLastUsedAccount);
   const [saved, setSaved] = useState(() => {
     try {
@@ -104,19 +95,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   });
   const savedRef = useRef(saved.identities);
+
   function updateSaved(identities: SavedIdentity[]) {
     savedRef.current = identities;
-    setSaved({ identities, error: null });
+    setSaved({identities, error: null});
   }
+
   function saveIdentities(incoming: SavedIdentity[]) {
     const next = mergeIdentities(readSavedIdentities(), incoming);
     localStorage.setItem(IDENTITY_STORAGE_KEY, serializeIdentityBackup(next));
     updateSaved(next);
   }
+
   function importIdentities(text: string) {
     const incoming = parseIdentityBackup(text);
     saveIdentities(incoming);
   }
+
   function clearSavedIdentities() {
     // Remove only this app's identity list, never unrelated origin/wallet data.
     localStorage.removeItem(IDENTITY_STORAGE_KEY);
@@ -124,6 +119,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     lockIdentities();
     setError(null);
   }
+
   const [sessionEpoch, setSessionEpoch] = useState(0);
   const [identityEpoch, setIdentityEpoch] = useState(0);
   const [walletActivity, setWalletActivity] = useState<WalletActivity | null>(
@@ -132,6 +128,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const privateIdentities = useRef<ReceivingIdentity[]>([]);
   const offerKeys = useRef(new Map<string, ItemKeyPair>());
   const [identities, setIdentities] = useState<SessionState["identities"]>([]);
+
   function clearPrivateIdentities() {
     offerKeys.current.forEach(clearItemKeys);
     offerKeys.current.clear();
@@ -142,6 +139,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     );
     privateIdentities.current = [];
   }
+
   function lockIdentities() {
     revision.current++;
     clearPrivateIdentities();
@@ -149,6 +147,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (current.current?.kind === "builtin") current.current.dispose?.();
     setCompatibility((value) => (value === "checking" ? "untested" : value));
   }
+
   const [session, setSession] = useState<LabWalletSession | null>(null);
   const [busy, setBusy] = useState(false);
   const [compatibility, setCompatibility] = useState<Compatibility>("untested");
@@ -187,9 +186,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
       signTypedData: selected.signTypedData ? async request => {
         if (!isCurrent()) throw new WalletError("wrong-account");
-        if (selected.kind !== "fixture") setWalletActivity({ ...action, walletName: selected.walletName, phase: "approval" });
+        if (selected.kind !== "fixture") setWalletActivity({
+          ...action,
+          walletName: selected.walletName,
+          phase: "approval"
+        });
         const signature = await selected.signTypedData!(request);
-        if (isCurrent() && selected.kind !== "fixture") setWalletActivity({ ...action, walletName: selected.walletName, phase: "processing" });
+        if (isCurrent() && selected.kind !== "fixture") setWalletActivity({
+          ...action,
+          walletName: selected.walletName,
+          phase: "processing"
+        });
         return signature;
       } : undefined,
     };
@@ -239,28 +246,53 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const refresh = () => setLastUsed(readLastUsedAccount());
-    const storage = (event: StorageEvent) => { if (event.key === LAST_USED_KEY || event.key === null) refresh(); };
+    const storage = (event: StorageEvent) => {
+      if (event.key === LAST_USED_KEY || event.key === null) refresh();
+    };
     window.addEventListener(LAST_USED_EVENT, refresh);
     window.addEventListener("storage", storage);
-    return () => { window.removeEventListener(LAST_USED_EVENT, refresh); window.removeEventListener("storage", storage); };
+    return () => {
+      window.removeEventListener(LAST_USED_EVENT, refresh);
+      window.removeEventListener("storage", storage);
+    };
   }, []);
 
   useEffect(() => {
     if (!session) return;
     // A fixed absolute lifetime: status reads and React rerenders never extend it.
-    const timer = setTimeout(() => { void disconnect(); }, 5 * 60 * 1000);
+    const timer = setTimeout(() => {
+      void disconnect();
+    }, 5 * 60 * 1000);
     return () => clearTimeout(timer);
   }, [sessionEpoch]);
 
   useEffect(() => {
     if (session?.kind !== "builtin") return;
     let timer: ReturnType<typeof setTimeout>;
-    const reset = () => { clearTimeout(timer); timer = setTimeout(() => { void disconnect(); }, IDLE_LOCK_MS); };
-    const revoke = () => { void disconnect(); };
-    const storage = (event: StorageEvent) => { if (event.key === VAULT_CHANGE_KEY || event.key === null) revoke(); };
-    reset(); window.addEventListener("pointerdown", reset); window.addEventListener("keydown", reset);
-    window.addEventListener(VAULT_EVENT, revoke); window.addEventListener("storage", storage);
-    return () => { clearTimeout(timer); window.removeEventListener("pointerdown", reset); window.removeEventListener("keydown", reset); window.removeEventListener(VAULT_EVENT, revoke); window.removeEventListener("storage", storage); };
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void disconnect();
+      }, IDLE_LOCK_MS);
+    };
+    const revoke = () => {
+      void disconnect();
+    };
+    const storage = (event: StorageEvent) => {
+      if (event.key === VAULT_CHANGE_KEY || event.key === null) revoke();
+    };
+    reset();
+    window.addEventListener("pointerdown", reset);
+    window.addEventListener("keydown", reset);
+    window.addEventListener(VAULT_EVENT, revoke);
+    window.addEventListener("storage", storage);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("pointerdown", reset);
+      window.removeEventListener("keydown", reset);
+      window.removeEventListener(VAULT_EVENT, revoke);
+      window.removeEventListener("storage", storage);
+    };
   }, [sessionEpoch]);
 
   async function connect(loadAdapter: () => Promise<LabWalletAdapter>) {
@@ -280,7 +312,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       current.current = next;
       if (next.kind !== "fixture") setLastUsed(rememberLastUsedAccount(next));
       setSessionEpoch((value) => value + 1);
-      setSession({ ...next });
+      setSession({...next});
       setCompatibility("untested");
       unsubscribe.current = next.subscribe?.((event) => {
         if (current.current !== next) return;
@@ -298,7 +330,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setNotice("Wallet disconnected. Connect again to continue.");
         } else {
           if (event === "accountsChanged") setLastUsed(rememberLastUsedAccount(next));
-          setSession({ ...next });
+          setSession({...next});
           setNotice(
             event === "accountsChanged"
               ? "Account changed. Restore your receiving keys again when needed."
@@ -315,25 +347,33 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (mounted.current) setBusy(false);
     }
   }
+
   async function connectMetaMask() {
     await connect(async () => metamaskAdapter);
   }
+
   async function connectBuiltIn(session: LabWalletSession) {
-    if (locked.current || current.current) { session.dispose?.(); throw new Error("Disconnect the current wallet first."); }
-    await connect(async () => ({ kind: "builtin", label: "Built-in wallet", connect: async () => session }));
+    if (locked.current || current.current) {
+      session.dispose?.();
+      throw new Error("Disconnect the current wallet first.");
+    }
+    await connect(async () => ({kind: "builtin", label: "Built-in wallet", connect: async () => session}));
   }
+
   async function connectFixture() {
     if (!import.meta.env.DEV) return;
     await connect(
       async () => (await import("./fixture-adapter")).fixtureAdapter,
     );
   }
+
   async function connectWalletConnect() {
     await connect(
       async () =>
         (await import("./walletconnect-adapter")).walletconnectAdapter,
     );
   }
+
   async function disconnect() {
     // Lock/disconnect must invalidate a pending approval immediately.
     const hadPendingOperation = locked.current;
@@ -365,6 +405,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     }
   }
+
   async function switchNetwork() {
     const selected = current.current;
     if (!selected?.switchNetwork || locked.current) return;
@@ -386,6 +427,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (mounted.current) setBusy(false);
     }
   }
+
   async function testCompatibility() {
     const selected = current.current;
     if (!selected || locked.current) return;
@@ -401,7 +443,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       current.current === selected;
     try {
       const reproducible = await checkCompatibility(
-        trackedSigner(selected, isCurrent, { action: "compatibility" }),
+        trackedSigner(selected, isCurrent, {action: "compatibility"}),
         isCurrent,
       );
       if (isCurrent())
@@ -420,6 +462,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     }
   }
+
   async function restoreIdentity(label: string) {
     const selected = current.current;
     if (!selected || locked.current) return;
@@ -440,7 +483,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       current.current === selected;
     try {
       const identity = await deriveIdentity(
-        trackedSigner(selected, isCurrent, { action: "restore", label }),
+        trackedSigner(selected, isCurrent, {action: "restore", label}),
         label,
         isCurrent,
       );
@@ -454,7 +497,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const remembered = savedRef.current.find(
         (item) =>
           identityId(item) ===
-          identityId({ walletAddress: selected.address, label }),
+          identityId({walletAddress: selected.address, label}),
       );
       if (
         (existing && existing.publicKey !== identity.publicKey) ||
@@ -475,7 +518,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         identity,
       ];
       setIdentities(
-        privateIdentities.current.map(({ label, publicKey }) => ({
+        privateIdentities.current.map(({label, publicKey}) => ({
           label,
           publicKey,
         })),
@@ -508,12 +551,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     }
   }
+
   async function runOperation<T>(
     operation: (
       session: LabWalletSession,
       isCurrent: () => boolean,
     ) => Promise<T>,
-    action: WalletAction = { action: "sign" },
+    action: WalletAction = {action: "sign"},
   ): Promise<T> {
     const selected = current.current;
     if (locked.current) throw new WalletError("pending");
@@ -538,6 +582,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     }
   }
+
   async function runIdentityOperation<T>(
     publicKey: string,
     operation: (privateKey: Uint8Array, isCurrent: () => boolean) => Promise<T>,
@@ -550,23 +595,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return operation(identity.privateKey, isCurrent);
     });
   }
+
   async function runOfferKeysOperation<T>(context: ReceivingContext, expectedPublicKey: string | undefined,
-    operation: (keys: ItemKeyPair, session: LabWalletSession, isCurrent: () => boolean) => Promise<T>) {
+                                          operation: (keys: ItemKeyPair, session: LabWalletSession, isCurrent: () => boolean) => Promise<T>) {
     return runOperation(async (session, isCurrent) => {
       if (session.address.toLowerCase() !== context.account || !isCurrent()) throw new Error("Wrong offer account or session.");
       const id = canonical(context);
       let keys = offerKeys.current.get(id);
       if (!keys) {
         keys = await restoreReceivingKeys(context, session, isCurrent, expectedPublicKey);
-        if (!isCurrent()) { clearItemKeys(keys); throw new Error("Session changed."); }
+        if (!isCurrent()) {
+          clearItemKeys(keys);
+          throw new Error("Session changed.");
+        }
         offerKeys.current.set(id, keys);
       }
       if (expectedPublicKey && encodeBase64(keys.encryptionPublicKey) !== expectedPublicKey) throw new Error("Offer key does not match the purchased seller identity.");
       const result = await operation(keys, session, isCurrent);
       if (!isCurrent()) throw new Error("Session changed.");
       return result;
-    }, { action: "restore", label: "Offer delivery keys" });
+    }, {action: "restore", label: "Offer delivery keys"});
   }
+
   return (
     <Context.Provider
       value={{
@@ -602,6 +652,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     </Context.Provider>
   );
 }
+
 export function useSession() {
   const value = useContext(Context);
   if (!value) throw new Error("SessionProvider missing.");

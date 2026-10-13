@@ -1,7 +1,7 @@
-import { parseStrictJson } from "@zkbytes/sdk";
-import { IDENTITY_PROFILE, validateLabel } from "./identity";
-import { createReceiveCard } from "./receive-card";
-import type { WalletKind } from "@/wallet/types";
+import {parseStrictJson} from "@zkbytes/sdk";
+import {IDENTITY_PROFILE, validateLabel} from "./identity";
+import {createReceiveCard} from "./receive-card";
+import type {WalletKind} from "@/wallet/types";
 
 export const IDENTITY_STORAGE_KEY = "payunlock.identities.v1";
 export const MAX_BACKUP_BYTES = 65536;
@@ -12,6 +12,7 @@ export type SavedIdentity = {
   publicKey: string;
   profile: typeof IDENTITY_PROFILE;
 };
+
 function exact(
   value: unknown,
   fields: string[],
@@ -23,11 +24,13 @@ function exact(
     Object.keys(value).sort().join(",") === fields.sort().join(",")
   );
 }
+
 export function identityId(
   value: Pick<SavedIdentity, "walletAddress" | "label">,
 ) {
   return `${value.walletAddress.toLowerCase()}:${value.label}`;
 }
+
 export function mergeIdentities(
   current: SavedIdentity[],
   incoming: SavedIdentity[],
@@ -44,6 +47,7 @@ export function mergeIdentities(
   if (merged.size > 100) throw new Error("Save at most 100 identities.");
   return [...merged.values()];
 }
+
 export function parseIdentityBackup(text: string): SavedIdentity[] {
   if (new TextEncoder().encode(text).length > MAX_BACKUP_BYTES)
     throw new Error("Backup is too large.");
@@ -87,15 +91,17 @@ export function parseIdentityBackup(text: string): SavedIdentity[] {
   });
   return mergeIdentities([], result);
 }
+
 export function serializeIdentityBackup(identities: SavedIdentity[]) {
   const text = JSON.stringify(
-    { format: "zkbytes-identities", version: 1, identities },
+    {format: "zkbytes-identities", version: 1, identities},
     null,
     2,
   );
   parseIdentityBackup(text);
   return text;
 }
+
 export function readSavedIdentities(): SavedIdentity[] {
   const text = localStorage.getItem(IDENTITY_STORAGE_KEY);
   return text === null ? [] : parseIdentityBackup(text);

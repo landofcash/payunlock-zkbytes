@@ -4,8 +4,8 @@ import {
   encodeBase64,
   normalizeAndVerifyMasterSignature,
 } from "@zkbytes/sdk";
-import type { LabWalletSession } from "@/wallet/types";
-import { WalletError } from "@/wallet/errors";
+import type {LabWalletSession} from "@/wallet/types";
+import {WalletError} from "@/wallet/errors";
 
 export const IDENTITY_PROFILE = "zkbytes-message-lab-receiving-v1";
 export type ReceivingIdentity = {
@@ -13,6 +13,7 @@ export type ReceivingIdentity = {
   publicKey: string;
   privateKey: Uint8Array;
 };
+
 export function validateLabel(label: string) {
   // Deliberately exact ASCII: no hidden trimming, case folding or Unicode normalization.
   if (
@@ -25,6 +26,7 @@ export function validateLabel(label: string) {
     );
   return label;
 }
+
 export function identityMessage(address: string, label: string) {
   validateLabel(label);
   return [
@@ -36,6 +38,7 @@ export function identityMessage(address: string, label: string) {
     "Only sign this message in an application you trust. No transaction is requested.",
   ].join("\n");
 }
+
 export async function deriveIdentity(
   session: LabWalletSession,
   label: string,

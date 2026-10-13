@@ -1,4 +1,4 @@
-import { getAddress } from "ethers";
+import {getAddress} from "ethers";
 
 export const ACCOUNT_NAMES_KEY = "payunlock.account-names.v1";
 export const ACCOUNT_NAMES_EVENT = "payunlock:account-names-changed";
@@ -14,10 +14,13 @@ export function savedAccountNames(): AccountNames {
     for (const [address, name] of Object.entries(value)) {
       try {
         if (typeof name === "string" && name.trim() && name.trim().length <= ACCOUNT_NAME_MAX_LENGTH) names[key(address)] = name.trim();
-      } catch { /* Ignore malformed metadata. */ }
+      } catch { /* Ignore malformed metadata. */
+      }
     }
     return names;
-  } catch { return {}; }
+  } catch {
+    return {};
+  }
 }
 
 function persist(names: AccountNames) {
@@ -34,12 +37,18 @@ export function ensureAccountNames(addresses: string[]): AccountNames {
     const account = key(address);
     if (!names[account]) {
       let name: string;
-      do { name = `Account ${next++}`; } while (Object.values(names).includes(name));
-      names[account] = name; changed = true;
+      do {
+        name = `Account ${next++}`;
+      } while (Object.values(names).includes(name));
+      names[account] = name;
+      changed = true;
     }
   }
   if (changed) {
-    try { persist(names); } catch { /* Unavailable naming storage must not prevent sign-in. */ }
+    try {
+      persist(names);
+    } catch { /* Unavailable naming storage must not prevent sign-in. */
+    }
   }
   return names;
 }
@@ -49,6 +58,10 @@ export function saveAccountName(address: string, input: string): AccountNames {
   if (!name || name.length > ACCOUNT_NAME_MAX_LENGTH) throw new Error(`Enter an account name between 1 and ${ACCOUNT_NAME_MAX_LENGTH} characters.`);
   const names = savedAccountNames();
   names[key(address)] = name;
-  try { persist(names); } catch { throw new Error("Could not save the account name in this browser. Try again."); }
+  try {
+    persist(names);
+  } catch {
+    throw new Error("Could not save the account name in this browser. Try again.");
+  }
   return names;
 }

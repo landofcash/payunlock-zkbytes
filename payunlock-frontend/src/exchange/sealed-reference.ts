@@ -41,9 +41,11 @@ export type SealedReference = Header & {
   encryptedPayload: string;
 };
 const encoder = new TextEncoder();
+
 function invalid(): never {
   throw new Error("Invalid or unsupported sealed reference.");
 }
+
 function exact(value: unknown, keys: string[]): Record<string, unknown> {
   if (
     !value ||
@@ -54,9 +56,11 @@ function exact(value: unknown, keys: string[]): Record<string, unknown> {
     invalid();
   return value as Record<string, unknown>;
 }
+
 function bounded(text: string, limit: number) {
   if (text.length > limit || encoder.encode(text).length > limit) invalid();
 }
+
 export function validateReference(
   input: unknown,
   supported: SupportedOrigins,
@@ -101,6 +105,7 @@ export function validateReference(
   bounded(JSON.stringify(reference), MAX_REFERENCE_BYTES);
   return reference;
 }
+
 function header(envelope: SealedReference): Header {
   return {
     format: envelope.format,
@@ -110,6 +115,7 @@ function header(envelope: SealedReference): Header {
     recipientPublicKey: envelope.recipientPublicKey,
   };
 }
+
 export function parseSealedReference(text: string): SealedReference {
   bounded(text, MAX_ENVELOPE_BYTES);
   const value = exact(parseStrictJson(text), [
@@ -142,6 +148,7 @@ export function parseSealedReference(text: string): SealedReference {
     invalid();
   return value as SealedReference;
 }
+
 export async function sealReference(
   referenceInput: unknown,
   recipient: ReceiveCard,
@@ -159,8 +166,8 @@ export async function sealReference(
   const aesKey = randomBytes(BYTE_LENGTHS.aesKey);
   try {
     // Authenticate all public metadata as part of the encrypted plaintext, then compare on open.
-    const { encryptedPayload } = await encryptPayload(
-      JSON.stringify({ ...metadata, reference }),
+    const {encryptedPayload} = await encryptPayload(
+      JSON.stringify({...metadata, reference}),
       aesKey,
     );
     const wrapped = await wrapAesKey(metadata.context, card.publicKey, aesKey);
@@ -175,6 +182,7 @@ export async function sealReference(
     aesKey.fill(0);
   }
 }
+
 export async function openSealedReference(
   text: string,
   privateKey: Uint8Array,
@@ -214,6 +222,7 @@ export async function openSealedReference(
     aesKey?.fill(0);
   }
 }
+
 export function sealedReferenceLink(
   appOrigin: string,
   envelope: SealedReference,
@@ -235,6 +244,7 @@ export function sealedReferenceLink(
     .replace(/=+$/, "");
   return `${appOrigin}/open#${fragment}`;
 }
+
 export function parseSealedReferenceFragment(
   fragment: string,
 ): SealedReference {
@@ -250,6 +260,6 @@ export function parseSealedReferenceFragment(
     base64 + "=".repeat((4 - (base64.length % 4)) % 4),
   );
   return parseSealedReference(
-    new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    new TextDecoder("utf-8", {fatal: true}).decode(bytes),
   );
 }

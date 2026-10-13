@@ -1,16 +1,16 @@
 import {
   BYTE_LENGTHS,
   clearItemKeys,
-  encodeBase32,
-  randomBytes,
   createSeedSigningMessage,
-  normalizeMasterSignature,
-  normalizeAndVerifyMasterSignature,
   deriveItemKeys,
+  encodeBase32,
   type ItemKeyPair,
+  normalizeAndVerifyMasterSignature,
+  normalizeMasterSignature,
+  randomBytes,
 } from "@zkbytes/sdk";
-import type { LabWalletSession } from "./types";
-import { WalletError } from "./errors";
+import type {LabWalletSession} from "./types";
+import {WalletError} from "./errors";
 
 export async function checkCompatibility(
   session: LabWalletSession,
@@ -31,6 +31,7 @@ export async function checkCompatibility(
       return signature;
     },
   };
+
   async function signAndDerive() {
     const message = createSeedSigningMessage(seed);
     const supplied = await signer.signMessage(message);
@@ -58,6 +59,7 @@ export async function checkCompatibility(
       if (supplied instanceof Uint8Array) supplied.fill(0);
     }
   }
+
   try {
     first = await signAndDerive();
     second = await signAndDerive();

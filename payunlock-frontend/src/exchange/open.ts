@@ -4,7 +4,7 @@ import {
   type ZkbytesClient,
   type ZkbytesReference,
 } from "@zkbytes/sdk";
-import { openSealedSeed } from "./sealed-seed";
+import {openSealedSeed} from "./sealed-seed";
 import {
   openSealedReference,
   parseSealedReferenceFragment,

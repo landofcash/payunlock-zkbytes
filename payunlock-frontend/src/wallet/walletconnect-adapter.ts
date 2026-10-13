@@ -1,22 +1,18 @@
-import type { AppKit } from "@reown/appkit";
-import { reownProjectId } from "@/config/reown";
-import { walletNetwork } from "@/config/wallet";
-import { WalletError } from "./errors";
-import { sendReviewedTransaction } from "./transactions";
-import { validateTokenAuthorization } from "./typed-data";
-import type {
-  LabWalletAdapter,
-  LabWalletSession,
-  WalletSessionEvent,
-} from "./types";
+import type {AppKit} from "@reown/appkit";
+import {reownProjectId} from "@/config/reown";
+import {walletNetwork} from "@/config/wallet";
+import {WalletError} from "./errors";
+import {sendReviewedTransaction} from "./transactions";
+import {validateTokenAuthorization} from "./typed-data";
+import type {LabWalletAdapter, LabWalletSession, WalletSessionEvent,} from "./types";
 
 const network = {
   id: Number(walletNetwork.chainId),
   name: walletNetwork.name,
-  nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-  rpcUrls: { default: { http: [walletNetwork.rpcUrl] } },
+  nativeCurrency: {name: "MON", symbol: "MON", decimals: 18},
+  rpcUrls: {default: {http: [walletNetwork.rpcUrl]}},
   blockExplorers: {
-    default: { name: "MonadVision", url: "https://testnet.monadvision.com" },
+    default: {name: "MonadVision", url: "https://testnet.monadvision.com"},
   },
   testnet: true,
 };
@@ -40,10 +36,13 @@ export type WalletConnectKit = Pick<
   | "resetWalletConnectUri"
   | "resetConnectingWallet"
 >;
+
 interface Provider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
 }
+
 let kitPromise: Promise<WalletConnectKit> | undefined;
+
 function getKit() {
   const projectId = reownProjectId;
   if (!projectId) return Promise.reject(new WalletError("configuration"));
@@ -51,7 +50,7 @@ function getKit() {
     import("@reown/appkit"),
     import("@reown/appkit-adapter-ethers"),
   ])
-    .then(([{ createAppKit }, { EthersAdapter }]) =>
+    .then(([{createAppKit}, {EthersAdapter}]) =>
       createAppKit({
         adapters: [new EthersAdapter()],
         networks: [network],
@@ -68,7 +67,7 @@ function getKit() {
         enableInjected: false,
         enableEIP6963: false,
         enableCoinbase: false,
-        defaultAccountTypes: { eip155: "eoa" },
+        defaultAccountTypes: {eip155: "eoa"},
         features: {
           analytics: false,
           email: false,
@@ -91,6 +90,7 @@ function getKit() {
 function validAddress(value: unknown): value is string {
   return typeof value === "string" && /^0x[0-9a-f]{40}$/i.test(value);
 }
+
 function hexChain(value: unknown): string | undefined {
   if (
     (typeof value === "number" || typeof value === "string") &&
@@ -117,9 +117,11 @@ export function createWalletConnectAdapter(
         let settled = false;
         let verifying = false;
         const subscriptions: (() => void)[] = [];
+
         function cleanup() {
           subscriptions.splice(0).forEach((stop) => stop());
         }
+
         async function fail(error: unknown) {
           if (settled) return;
           settled = true;
@@ -134,6 +136,7 @@ export function createWalletConnectAdapter(
           }
           reject(error);
         }
+
         async function tryConnected() {
           if (settled || verifying) return;
           const account = kit.getAccount("eip155");
@@ -149,7 +152,7 @@ export function createWalletConnectAdapter(
             // The dedicated button must not silently select an injected/embedded wallet.
             if (kit.getProviderType("eip155") !== "WALLET_CONNECT")
               throw new WalletError("unsupported");
-            const accounts = await provider.request({ method: "eth_accounts" });
+            const accounts = await provider.request({method: "eth_accounts"});
             if (
               !Array.isArray(accounts) ||
               !accounts.some(
@@ -172,7 +175,8 @@ export function createWalletConnectAdapter(
             const session = connectedSession(kit, provider, account.address);
             settled = true;
             cleanup();
-            void kit.close().catch(() => {});
+            void kit.close().catch(() => {
+            });
             resolve(session);
           } catch (error) {
             await fail(error);
@@ -180,6 +184,7 @@ export function createWalletConnectAdapter(
             verifying = false;
           }
         }
+
         subscriptions.push(
           kit.subscribeAccount(() => {
             void tryConnected();
@@ -201,7 +206,7 @@ export function createWalletConnectAdapter(
           }),
         );
         void kit
-          .open({ view: "Connect", namespace: "eip155" })
+          .open({view: "Connect", namespace: "eip155"})
           .then(() => {
             void tryConnected();
           })
@@ -224,6 +229,7 @@ function connectedSession(
   const emit = (event: WalletSessionEvent) => {
     for (const listener of listeners) listener(event);
   };
+
   function disconnected() {
     if (connected) {
       connected = false;
@@ -231,6 +237,7 @@ function connectedSession(
       emit("disconnect");
     }
   }
+
   const subscriptions = [
     kit.subscribeAccount((account) => {
       if (!account.isConnected || !validAddress(account.address)) {
@@ -255,21 +262,23 @@ function connectedSession(
       if (kit.getProvider<Provider>("eip155") !== provider) disconnected();
     }),
   ];
+
   function dispose() {
     connected = false;
     revision++;
     subscriptions.forEach((stop) => stop());
     listeners.clear();
   }
+
   async function verify(expected: string, version: number) {
     if (!connected || kit.getProvider<Provider>("eip155") !== provider)
       throw new WalletError("disconnected");
-    const accounts = await provider.request({ method: "eth_accounts" });
+    const accounts = await provider.request({method: "eth_accounts"});
     if (!connected) throw new WalletError("disconnected");
     if (
       revision !== version ||
       kit.getAccount("eip155")?.address?.toLowerCase() !==
-        expected.toLowerCase() ||
+      expected.toLowerCase() ||
       !Array.isArray(accounts) ||
       !accounts.some(
         (value) =>
@@ -279,6 +288,7 @@ function connectedSession(
     )
       throw new WalletError("wrong-account");
   }
+
   const peerName = kit
     .getWalletInfo("eip155")
     ?.name?.replace(/\p{Cc}/gu, "")
@@ -313,8 +323,11 @@ function connectedSession(
     async signTypedData(request) {
       const expected = address, version = revision;
       await verify(expected, version);
-      const { domain, types, primaryType, message } = validateTokenAuthorization(request, expected);
-      const signature = await provider.request({ method: "eth_signTypedData_v4", params: [expected, JSON.stringify({ domain, types, primaryType, message })] });
+      const {domain, types, primaryType, message} = validateTokenAuthorization(request, expected);
+      const signature = await provider.request({
+        method: "eth_signTypedData_v4",
+        params: [expected, JSON.stringify({domain, types, primaryType, message})]
+      });
       await verify(expected, version);
       if (typeof signature !== "string") throw new WalletError("unsupported");
       return signature;
@@ -329,7 +342,7 @@ function connectedSession(
     },
     async switchNetwork() {
       if (!connected) throw new WalletError("disconnected");
-      await kit.switchNetwork(network, { throwOnFailure: true });
+      await kit.switchNetwork(network, {throwOnFailure: true});
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -340,4 +353,5 @@ function connectedSession(
     dispose,
   };
 }
+
 export const walletconnectAdapter = createWalletConnectAdapter();

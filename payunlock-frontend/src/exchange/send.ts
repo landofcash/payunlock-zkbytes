@@ -7,8 +7,8 @@ import {
   type ZkbytesClient,
   type ZkbytesReference,
 } from "@zkbytes/sdk";
-import { parseReceiveCard } from "./receive-card";
-import { sealSeed, type SealedSeed } from "./sealed-seed";
+import {parseReceiveCard} from "./receive-card";
+import {sealSeed, type SealedSeed} from "./sealed-seed";
 
 export type Candidate = {
   item: StorageItem;
@@ -25,6 +25,7 @@ export type UploadState =
   | "deleted"
   | "expired";
 export const MAX_MESSAGE_BYTES = 65536;
+
 export async function prepareMessage(
   client: ZkbytesClient,
   plaintext: string,
@@ -72,11 +73,12 @@ export async function prepareMessage(
     const reference = client.createReference(prepared.item);
     const envelope = await sealSeed(reference.seed, recipient);
     check();
-    return { item: prepared.item, reference, envelope };
+    return {item: prepared.item, reference, envelope};
   } finally {
     clearItemKeys(prepared.keys);
   }
 }
+
 export async function uploadCandidate(
   client: ZkbytesClient,
   candidate: Candidate,
@@ -103,6 +105,7 @@ export async function uploadCandidate(
     return "uncertain";
   }
 }
+
 export async function recoverCandidate(
   client: ZkbytesClient,
   candidate: Candidate,

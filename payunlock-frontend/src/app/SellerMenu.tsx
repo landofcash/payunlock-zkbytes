@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { ChevronDown, Package, Plus, Store } from "lucide-react";
+import {useEffect, useRef, useState} from "react";
+import {Link, useLocation} from "react-router-dom";
+import {ChevronDown, Package, Plus, Store} from "lucide-react";
 
 export function SellerMenu() {
   const [open, setOpen] = useState(false);
@@ -24,7 +24,9 @@ export function SellerMenu() {
     ref={menu}
     onMouseEnter={() => setOpen(true)}
     onMouseLeave={() => setOpen(false)}
-    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false); }}
+    onBlur={event => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+    }}
     onKeyDown={event => {
       if (event.key === "Escape") {
         setOpen(false);
@@ -42,12 +44,14 @@ export function SellerMenu() {
       aria-current={active ? "page" : undefined}
       onClick={() => setOpen(value => !value)}
     >
-      <Store aria-hidden="true" />Seller<ChevronDown className="seller-menu-chevron" aria-hidden="true" />
+      <Store aria-hidden="true"/>Seller<ChevronDown className="seller-menu-chevron" aria-hidden="true"/>
     </button>
     {open && <div className="seller-submenu" aria-label="Seller">
-      <Link className="seller-submenu-link" to="/sales" onClick={() => setOpen(false)}><Package aria-hidden="true" />Sales</Link>
-      <Link className="seller-submenu-link" to="/offers" onClick={() => setOpen(false)}><Store aria-hidden="true" />My Offers</Link>
-      <Link className="seller-submenu-link" to="/create" onClick={() => setOpen(false)}><Plus aria-hidden="true" />New Offer</Link>
+        <Link className="seller-submenu-link" to="/sales" onClick={() => setOpen(false)}><Package aria-hidden="true"/>Sales</Link>
+        <Link className="seller-submenu-link" to="/offers" onClick={() => setOpen(false)}><Store aria-hidden="true"/>My
+            Offers</Link>
+        <Link className="seller-submenu-link" to="/create" onClick={() => setOpen(false)}><Plus aria-hidden="true"/>New
+            Offer</Link>
     </div>}
   </div>;
 }

@@ -5,7 +5,8 @@ import {
   normalizeAndVerifyMasterSignature,
   type MasterMessageSigner,
 } from "@zkbytes/sdk";
-import { IDENTITY_PROFILE } from "./identity";
+import {IDENTITY_PROFILE} from "./identity";
+
 export type ReceiveCard = {
   format: "zkbytes-receive-card";
   version: 1;
@@ -14,12 +15,14 @@ export type ReceiveCard = {
   publicKey: string;
   endorsement?: { walletAddress: string; signature: string };
 };
+
 function base64url(bytes: Uint8Array) {
   return encodeBase64(bytes)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 }
+
 function decodeUrl(text: string, length: number) {
   if (
     !/^[A-Za-z0-9_-]+$/.test(text) ||
@@ -28,19 +31,21 @@ function decodeUrl(text: string, length: number) {
     throw new Error("Invalid encoding.");
   const bytes = decodeBase64(
     text.replace(/-/g, "+").replace(/_/g, "/") +
-      "=".repeat((4 - (text.length % 4)) % 4),
+    "=".repeat((4 - (text.length % 4)) % 4),
     length,
   );
   if (base64url(bytes) !== text) throw new Error("Noncanonical encoding.");
   return bytes;
 }
+
 export function receiveCardMessage(publicKey: string) {
   const card = createReceiveCard(publicKey);
   return `zkbytes Receive card\nVersion: 1\nPublic key: ${base64url(decodeBase64(card.publicKey))}`;
 }
+
 function verifyEndorsement(card: ReceiveCard) {
   if (!card.endorsement) return;
-  const { walletAddress, signature } = card.endorsement;
+  const {walletAddress, signature} = card.endorsement;
   if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddress))
     throw new Error("Invalid wallet address.");
   const bytes = decodeUrl(signature, 65);
@@ -57,6 +62,7 @@ function verifyEndorsement(card: ReceiveCard) {
     verified.fill(0);
   }
 }
+
 export function serializeReceiveCard(card: ReceiveCard): string {
   const valid = createReceiveCard(card.publicKey);
   verifyEndorsement(card);
@@ -65,9 +71,11 @@ export function serializeReceiveCard(card: ReceiveCard): string {
     ? `${prefix}.${card.endorsement.walletAddress.toLowerCase()}.${card.endorsement.signature}`
     : prefix;
 }
+
 export function receiveLink(origin: string, card: ReceiveCard): string {
   return new URL(`/send#${serializeReceiveCard(card)}`, origin).href;
 }
+
 export async function signReceiveCard(
   publicKey: string,
   signer: MasterMessageSigner,
@@ -92,6 +100,7 @@ export async function signReceiveCard(
     if (supplied instanceof Uint8Array) supplied.fill(0);
   }
 }
+
 export function createReceiveCard(publicKey: string): ReceiveCard {
   const key = decodeBase64(publicKey);
   validateX25519PublicKey(key);
@@ -106,6 +115,7 @@ export function createReceiveCard(publicKey: string): ReceiveCard {
     publicKey,
   };
 }
+
 export function parseReceiveCard(text: string): ReceiveCard {
   if (new TextEncoder().encode(text).length > 2048)
     throw new Error("Receive link is too large.");

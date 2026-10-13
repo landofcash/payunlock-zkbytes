@@ -7,7 +7,7 @@ import {
   type MasterMessageSigner,
   type ZkbytesReference,
 } from "@zkbytes/sdk";
-import { MAX_REFERENCE_BYTES, validateReference } from "./sealed-reference";
+import {MAX_REFERENCE_BYTES, validateReference} from "./sealed-reference";
 
 export function importReference(text: string, client: ZkbytesClient) {
   const bytes = new TextEncoder().encode(text);

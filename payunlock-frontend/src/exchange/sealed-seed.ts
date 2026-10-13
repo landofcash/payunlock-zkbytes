@@ -64,8 +64,8 @@ export function parseSealedSeedFragment(fragment: string): SealedSeed {
   const bytes = decodeBase64url(encryptedSeed, SEALED_SEED_BYTES);
   if (bytes[0] !== SEALED_SEED_VERSION) invalid();
   return recipientPublicKey
-    ? { recipientPublicKey, encryptedSeed }
-    : { encryptedSeed };
+    ? {recipientPublicKey, encryptedSeed}
+    : {encryptedSeed};
 }
 
 export function sealedSeedFragment(
@@ -103,7 +103,7 @@ export async function openSealedSeed(
     if (
       envelope.recipientPublicKey &&
       encodeBase64(await x25519PublicKeyFromPrivate(privateKey)) !==
-        envelope.recipientPublicKey
+      envelope.recipientPublicKey
     )
       invalid();
     return await decryptSeed(

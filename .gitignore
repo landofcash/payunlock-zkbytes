@@ -19,3 +19,5 @@ payunlock-indexer/generated/
 payunlock-indexer/envio-env.d.ts
 # Public-chain Ignition journals are durable deployment records; never ignore them.
 payunlock-contract/ignition/deployments/local-*/
+/payunlock-frontend/.idea
+/payunlock-indexer/.idea

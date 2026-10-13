@@ -1,5 +1,5 @@
 import artwork from "./mascot.svg?raw";
-import { createLizardGroundedGait, type GaitPose } from "./grounded-gait.js";
+import {createLizardGroundedGait, type GaitPose} from "./grounded-gait.js";
 
 type Point = { x: number; y: number };
 type Curve = [Point, Point, Point, Point];
@@ -15,17 +15,23 @@ const stopDuration = straightenStart + straighten;
 // A curious first touch, a longer beat, then two quicker touches.
 const touchOffsets = [0, .52, .82];
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
-const ease = (value: number) => { const p = clamp(value); return p * p * (3 - 2 * p); };
+const ease = (value: number) => {
+  const p = clamp(value);
+  return p * p * (3 - 2 * p);
+};
 
 function rotate(point: Point, degrees: number): Point {
   const angle = degrees * Math.PI / 180;
-  return { x: point.x * Math.cos(angle) - point.y * Math.sin(angle), y: point.x * Math.sin(angle) + point.y * Math.cos(angle) };
+  return {
+    x: point.x * Math.cos(angle) - point.y * Math.sin(angle),
+    y: point.x * Math.sin(angle) + point.y * Math.cos(angle)
+  };
 }
 
 // Match the authored SVG's nose (176, 56), head pivot (178, 142), and 52-unit tongue.
 function tongueOffset() {
-  const head = rotate({ x: -2, y: -138 }, aim);
-  return rotate({ x: (2 + head.x) * unit, y: (86 + head.y) * unit }, 90);
+  const head = rotate({x: -2, y: -138}, aim);
+  return rotate({x: (2 + head.x) * unit, y: (86 + head.y) * unit}, 90);
 }
 
 function bezier([a, b, c, d]: Curve, p: number) {
@@ -45,15 +51,15 @@ function pathAt(curves: Curve[], p: number) {
 }
 
 function measure(curves: Curve[]) {
-  const samples = [{ distance: 0, p: 0 }];
+  const samples = [{distance: 0, p: 0}];
   let length = 0, previous = pathAt(curves, 0);
   for (let i = 1; i <= 160; i++) {
     const point = pathAt(curves, i / 160);
     length += Math.hypot(point.x - previous.x, point.y - previous.y);
-    samples.push({ distance: length, p: i / 160 });
+    samples.push({distance: length, p: i / 160});
     previous = point;
   }
-  return { curves, samples, length, duration: length / speed + ramp };
+  return {curves, samples, length, duration: length / speed + ramp};
 }
 
 function travel(route: ReturnType<typeof measure>, elapsed: number) {
@@ -68,18 +74,20 @@ function travel(route: ReturnType<typeof measure>, elapsed: number) {
   }
   const a = route.samples[low]!, b = route.samples[high]!;
   const p = a.p + (b.p - a.p) * (distance - a.distance) / (b.distance - a.distance || 1);
-  return { ...pathAt(route.curves, p), distance: distance / unit };
+  return {...pathAt(route.curves, p), distance: distance / unit};
 }
 
 function touchPose(time: number) {
   let offset: number | undefined;
-  for (const start of touchOffsets) { if (time >= start) offset = start; }
-  if (offset === undefined || time >= touches) return { tongue: 0, reaction: 0 };
+  for (const start of touchOffsets) {
+    if (time >= start) offset = start;
+  }
+  if (offset === undefined || time >= touches) return {tongue: 0, reaction: 0};
   const t = time - offset;
   const tongue = t < .07 ? ease(t / .07) : t < .14 ? 1 : t < .24 ? 1 - ease((t - .14) / .1) : 0;
   // The icon responds only once the tongue arrives, then gently settles as it retracts.
   const reaction = t < .07 || t >= .30 ? 0 : Math.sin((t - .07) / .23 * Math.PI) ** 2;
-  return { tongue, reaction };
+  return {tongue, reaction};
 }
 
 export function createLizardScene(layer: HTMLDivElement, targets: SVGSVGElement[], onFinish: () => void) {
@@ -95,7 +103,12 @@ export function createLizardScene(layer: HTMLDivElement, targets: SVGSVGElement[
   svg.classList.add("is-scripted", "is-running", "is-paused");
   svg.setAttribute("aria-hidden", "true");
   svg.pauseAnimations();
-  Object.assign(svg.style, { width: `${300 * unit}px`, height: `${600 * unit}px`, left: `${-146 * unit}px`, top: `${-56 * unit}px` });
+  Object.assign(svg.style, {
+    width: `${300 * unit}px`,
+    height: `${600 * unit}px`,
+    left: `${-146 * unit}px`,
+    top: `${-56 * unit}px`
+  });
   const gait = createLizardGroundedGait(svg);
   let contacts: Point[] = [], stops: Point[] = [], routes: ReturnType<typeof measure>[] = [];
   let time = 0, frame = 0, previous: number | null = null, paused = true, destroyed = false, dirty = true;
@@ -104,24 +117,24 @@ export function createLizardScene(layer: HTMLDivElement, targets: SVGSVGElement[
     const bounds = layer.getBoundingClientRect();
     contacts = targets.map(target => {
       const rect = target.getBoundingClientRect();
-      return { x: rect.left - bounds.left + rect.width / 2, y: rect.top - bounds.top + rect.height / 2 };
+      return {x: rect.left - bounds.left + rect.width / 2, y: rect.top - bounds.top + rect.height / 2};
     });
     const offset = tongueOffset();
-    stops = contacts.map(contact => ({ x: contact.x - offset.x, y: contact.y - offset.y }));
+    stops = contacts.map(contact => ({x: contact.x - offset.x, y: contact.y - offset.y}));
     const lane = Math.max(...targets.map(target => target.closest("a")!.getBoundingClientRect().bottom - bounds.top)) + 30;
-    const points = [{ x: -60, y: lane }, ...stops, { x: bounds.width + 200, y: lane }];
+    const points = [{x: -60, y: lane}, ...stops, {x: bounds.width + 200, y: lane}];
     routes = points.slice(1).map((end, index) => {
       const start = points[index]!, reach = (end.x - start.x) / 3;
       if (index > 0 && index < stops.length) {
         // Dip below the labels between stops, keeping a horizontal tangent at both icons.
-        const middle = { x: (start.x + end.x) / 2, y: lane };
+        const middle = {x: (start.x + end.x) / 2, y: lane};
         const bend = (end.x - start.x) / 6;
         return measure([
-          [start, { x: start.x + bend, y: start.y }, { x: middle.x - bend, y: lane }, middle],
-          [middle, { x: middle.x + bend, y: lane }, { x: end.x - bend, y: end.y }, end],
+          [start, {x: start.x + bend, y: start.y}, {x: middle.x - bend, y: lane}, middle],
+          [middle, {x: middle.x + bend, y: lane}, {x: end.x - bend, y: end.y}, end],
         ]);
       }
-      return measure([[start, { x: start.x + reach, y: start.y }, { x: end.x - reach, y: end.y }, end]]);
+      return measure([[start, {x: start.x + reach, y: start.y}, {x: end.x - reach, y: end.y}, end]]);
     });
     gait.reset();
     dirty = false;
@@ -133,7 +146,15 @@ export function createLizardScene(layer: HTMLDivElement, targets: SVGSVGElement[
       const route = routes[i]!;
       if (elapsed < route.duration) {
         const point = travel(route, elapsed);
-        return { ...point, distance: distance + point.distance, running: true, look: 0, tongue: 0, reaction: 0, target: i };
+        return {
+          ...point,
+          distance: distance + point.distance,
+          running: true,
+          look: 0,
+          tongue: 0,
+          reaction: 0,
+          target: i
+        };
       }
       elapsed -= route.duration;
       distance += route.length / unit;
@@ -143,7 +164,14 @@ export function createLizardScene(layer: HTMLDivElement, targets: SVGSVGElement[
           const look = elapsed < arrivePause + turn
             ? turning < .7 ? (aim - 6) * ease(turning / .7) : aim - 6 + 6 * ease((turning - .7) / .3)
             : elapsed < straightenStart ? aim : aim * (1 - ease((elapsed - straightenStart) / straighten));
-          return { ...stops[i]!, angle: 90, distance, running: false, look, ...touchPose(elapsed - touchStart), target: i };
+          return {
+            ...stops[i]!,
+            angle: 90,
+            distance,
+            running: false,
+            look, ...touchPose(elapsed - touchStart),
+            target: i
+          };
         }
         elapsed -= stopDuration;
       }
@@ -156,13 +184,18 @@ export function createLizardScene(layer: HTMLDivElement, targets: SVGSVGElement[
     if (pose.running) svg.unpauseAnimations(); else svg.pauseAnimations();
     gait.draw(pose, unit);
     actor.style.transform = `translate(${pose.x}px,${pose.y}px) rotate(${pose.angle}deg)`;
-    heads.forEach(head => { head.style.transform = `rotate(${pose.look}deg)`; });
+    heads.forEach(head => {
+      head.style.transform = `rotate(${pose.look}deg)`;
+    });
     svg.style.setProperty("--pico-tongue-extension", String(pose.tongue));
     const contact = contacts[pose.target];
     targets.forEach((target, index) => target.style.setProperty("--lizard-icon-pulse", String(index === pose.target ? pose.reaction : 0)));
     glow.style.opacity = String(pose.reaction * .65);
     glow.style.transform = `translate(-50%, -50%) scale(${.85 + pose.reaction * .25})`;
-    if (contact) { glow.style.left = `${contact.x}px`; glow.style.top = `${contact.y}px`; }
+    if (contact) {
+      glow.style.left = `${contact.x}px`;
+      glow.style.top = `${contact.y}px`;
+    }
   }
 
   function tick(now: number) {
@@ -172,7 +205,11 @@ export function createLizardScene(layer: HTMLDivElement, targets: SVGSVGElement[
     if (previous !== null) time += Math.min((now - previous) / 1000, .05);
     previous = now;
     const pose = sample(time);
-    if (!pose) { destroy(); onFinish(); return; }
+    if (!pose) {
+      destroy();
+      onFinish();
+      return;
+    }
     render(pose);
     frame = requestAnimationFrame(tick);
   }
@@ -182,8 +219,10 @@ export function createLizardScene(layer: HTMLDivElement, targets: SVGSVGElement[
     paused = value;
     previous = null;
     if (value) {
-      cancelAnimationFrame(frame); frame = 0;
-      svg.classList.add("is-paused"); svg.pauseAnimations();
+      cancelAnimationFrame(frame);
+      frame = 0;
+      svg.classList.add("is-paused");
+      svg.pauseAnimations();
     } else if (!frame) frame = requestAnimationFrame(tick);
   }
 
@@ -204,5 +243,5 @@ export function createLizardScene(layer: HTMLDivElement, targets: SVGSVGElement[
   resize.observe(document.documentElement);
   resize.observe(layer);
   targets.forEach(target => resize.observe(target));
-  return { setPaused, destroy };
+  return {setPaused, destroy};
 }

@@ -1,27 +1,45 @@
-import { DeliverySession } from "./delivery-session";
-import { RefreshCw as ButtonRefreshCw, Eye as ButtonEye, Save as ButtonSave, LockKeyhole as ButtonLockKeyhole, MessageSquare, AlertCircle, ArrowRight, Check } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useSession } from "@/wallet/session-store";
-import { canonical, commitment } from "@/crypto/encoding";
-import { useCommerce, type Action, type OrderView, type Page } from "./client";
-import type { Pending } from "./delivery-state";
-import { openDelivery, prepareDelivery, restoreReceiving, type Opening, type Order, type Service } from "./protocol";
-import { deliveryRecord, protocolOrder, reference, storageService, type ChainRecord } from "./lifecycle";
-import { Feedback, journal, prepareOperation, randomId, TransactionPanel, useTask } from "./ui";
-import type { Operation } from "./purchase-journal";
-import { OrderDialog } from "./OrderPresentation";
-import { SellerDeliveryProgress } from "./SellerDeliveryProgress";
-import type { OrderRole } from "./order-routes";
-import { Arbitration } from "./Arbitration";
-import type { ItemKeyPair } from "@zkbytes/sdk";
-import type { LabWalletSession } from "@/wallet/types";
-import { DELIVERY_GAS_BOUND, sellerDeliveryAbi } from "@/wallet/seller-authorization";
+import {DeliverySession} from "./delivery-session";
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  Eye as ButtonEye,
+  LockKeyhole as ButtonLockKeyhole,
+  MessageSquare,
+  RefreshCw as ButtonRefreshCw,
+  Save as ButtonSave
+} from "lucide-react";
+import {Button} from "@/components/ui/button";
+import {type ReactNode, useEffect, useRef, useState} from "react";
+import {useSession} from "@/wallet/session-store";
+import {canonical, commitment} from "@/crypto/encoding";
+import {type Action, type OrderView, type Page, useCommerce} from "./client";
+import type {Pending} from "./delivery-state";
+import {openDelivery, type Opening, type Order, prepareDelivery, restoreReceiving, type Service} from "./protocol";
+import {type ChainRecord, deliveryRecord, protocolOrder, reference, storageService} from "./lifecycle";
+import {Feedback, journal, prepareOperation, randomId, TransactionPanel, useTask} from "./ui";
+import type {Operation} from "./purchase-journal";
+import {OrderDialog} from "./OrderPresentation";
+import {SellerDeliveryProgress} from "./SellerDeliveryProgress";
+import type {OrderRole} from "./order-routes";
+import {Arbitration} from "./Arbitration";
+import type {ItemKeyPair} from "@zkbytes/sdk";
+import type {LabWalletSession} from "@/wallet/types";
+import {DELIVERY_GAS_BOUND, sellerDeliveryAbi} from "@/wallet/seller-authorization";
 
 export function recoveryId(order: Order, kind: "delivery" | "message", turn: string, sender: string) {
-  return commitment("payunlock-pending-v1", { deployment: order.deployment, orderId: order.orderId, kind, turn, sender });
+  return commitment("payunlock-pending-v1", {deployment: order.deployment, orderId: order.orderId, kind, turn, sender});
 }
-export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSummary, renderHistory, role }: { role?: OrderRole; view: OrderView; refresh(): Promise<void>; actions?: ReactNode; onAcceptDelivery?(): void; renderSummary?(controls: ReactNode): ReactNode; renderHistory?(completed: ReactNode): ReactNode }) {
+
+export function Fulfillment({view, refresh, actions, onAcceptDelivery, renderSummary, renderHistory, role}: {
+  role?: OrderRole;
+  view: OrderView;
+  refresh(): Promise<void>;
+  actions?: ReactNode;
+  onAcceptDelivery?(): void;
+  renderSummary?(controls: ReactNode): ReactNode;
+  renderHistory?(completed: ReactNode): ReactNode
+}) {
   const wallet = useSession(), api = useCommerce(), task = useTask();
   const [order, setOrder] = useState<Order>(), [service, setService] = useState<Service>();
   const [services, setServices] = useState<{ id: number; label: string }[]>([]);
@@ -34,12 +52,27 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
   const builtin = wallet.session?.kind === "builtin";
   const deliveryApproval = useRef<(() => void) | undefined>(undefined);
   const deliverySelfPay = useRef<boolean | undefined>(undefined);
-  function releaseApproval() { deliveryApproval.current?.(); deliveryApproval.current = undefined; setAutoPublish(false); }
-  const account = wallet.session!.address.toLowerCase(), participant = [view.order.buyer, view.order.seller].includes(account);
+
+  function releaseApproval() {
+    deliveryApproval.current?.();
+    deliveryApproval.current = undefined;
+    setAutoPublish(false);
+  }
+
+  const account = wallet.session!.address.toLowerCase(),
+    participant = [view.order.buyer, view.order.seller].includes(account);
   const isDelivery = pending?.record.kind === "delivery" || (view.order.state <= 2 && account === view.order.seller);
   const recovery = deliverySession.current;
   const live = useRef(true);
-  useEffect(() => { live.current = true; return () => { live.current = false; deliveryApproval.current?.(); deliverySession.current.clear(); }; }, []);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+      deliveryApproval.current?.();
+      deliverySession.current.clear();
+    };
+  }, []);
+
   async function initialize() {
     const d = await api.read<Order["deployment"]>("/deployment");
     const currentOrder = protocolOrder(view, d);
@@ -48,21 +81,54 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
     const s = storageService(await api.read(`/storage-service?id=${offered[0]?.id ?? 1}`));
     const r = await api.request<Page<ChainRecord>>(`/orders/${view.orderId}/records`);
     if (!live.current) return;
-    setOrder(currentOrder); setService(s); setRows(r.items); setNextCursor(r.nextCursor);
+    setOrder(currentOrder);
+    setService(s);
+    setRows(r.items);
+    setNextCursor(r.nextCursor);
     const ops = await journal.list(account);
     setOperation(ops.filter(o => o.orderId === view.orderId && o.id.startsWith("lifecycle:") && o.deployment.chainId === d.chainId && o.deployment.contract.toLowerCase() === d.contract.toLowerCase()).at(-1));
   }
-  useEffect(() => { void task.run(initialize); }, []); // Mounted per account/order, no background wallet prompts.
-  useEffect(() => { let current = true; void api.request<Page<ChainRecord>>(`/orders/${view.orderId}/records`).then(r => { if (current) { setRows(r.items); setNextCursor(r.nextCursor); } }).catch(() => {}); return () => { current = false; }; }, [view.order.state, view.order.turn]);
+
+  useEffect(() => {
+    void task.run(initialize);
+  }, []); // Mounted per account/order, no background wallet prompts.
+  useEffect(() => {
+    let current = true;
+    void api.request<Page<ChainRecord>>(`/orders/${view.orderId}/records`).then(r => {
+      if (current) {
+        setRows(r.items);
+        setNextCursor(r.nextCursor);
+      }
+    }).catch(() => {
+    });
+    return () => {
+      current = false;
+    };
+  }, [view.order.state, view.order.turn]);
+
   async function prepareAction(action: Action) {
     if (!order) throw new Error("Order is still loading.");
     const latest = await journal.list(account);
     if (latest.some(o => o.orderId === view.orderId && o.progress === "checking")) throw new Error("Check the pending transaction before starting another action.");
     setAutoPublish(false);
-    const record: Operation = { id: `lifecycle:${randomId()}`, account, deployment: order.deployment, orderId: view.orderId, hashes: [], progress: "draft", version: 0, payNetworkFeeSelf: ["reserveDelivery", "publishDelivery"].includes(action.kind) ? deliverySelfPay.current ?? operation?.payNetworkFeeSelf : undefined };
+    const record: Operation = {
+      id: `lifecycle:${randomId()}`,
+      account,
+      deployment: order.deployment,
+      orderId: view.orderId,
+      hashes: [],
+      progress: "draft",
+      version: 0,
+      payNetworkFeeSelf: ["reserveDelivery", "publishDelivery"].includes(action.kind) ? deliverySelfPay.current ?? operation?.payNetworkFeeSelf : undefined
+    };
     const result = await prepareOperation(api, record, action, record.payNetworkFeeSelf);
-    if (live.current) { setOperation(result); if (["reserveDelivery", "publishDelivery"].includes(action.kind) && (!builtin || !deliveryApproval.current)) setDeliveryReviewOpen(true); if (["requestArbitration", "approveArbitrationFee", "submitArbitrationEvidence", "requestArbitrationEvidence", "resolveArbitration"].includes(action.kind)) setArbitrationReviewOpen(true); }
+    if (live.current) {
+      setOperation(result);
+      if (["reserveDelivery", "publishDelivery"].includes(action.kind) && (!builtin || !deliveryApproval.current)) setDeliveryReviewOpen(true);
+      if (["requestArbitration", "approveArbitrationFee", "submitArbitrationEvidence", "requestArbitrationEvidence", "resolveArbitration"].includes(action.kind)) setArbitrationReviewOpen(true);
+    }
   }
+
   async function create() {
     if (!order || !service || !text.trim()) throw new Error("Enter delivery or message text first.");
     const existing = await journal.list(account);
@@ -75,24 +141,45 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
     const key = recoveryId(order, kind, turn, account);
     const prepare = async (session: LabWalletSession, isCurrent: () => boolean, offerKeys?: ItemKeyPair) => {
       const selectedService = storageService(await api.read(`/storage-service?id=${service.id}&prepare=true`));
-      const prepared = await prepareDelivery({ order, payload: { text, tickets: [] }, kind, turn, signer: session, service: selectedService, latestPublicationSeconds: current.order.state === 2 ? BigInt(current.order.publicationDeadline) : BigInt(Math.max(current.block.timestamp, Math.floor(Date.now() / 1000))) + BigInt(current.order.terms.commitmentWindow), isCurrent, offerKeys });
+      const prepared = await prepareDelivery({
+        order,
+        payload: {text, tickets: []},
+        kind,
+        turn,
+        signer: session,
+        service: selectedService,
+        latestPublicationSeconds: current.order.state === 2 ? BigInt(current.order.publicationDeadline) : BigInt(Math.max(current.block.timestamp, Math.floor(Date.now() / 1000))) + BigInt(current.order.terms.commitmentWindow),
+        isCurrent,
+        offerKeys
+      });
       if (!isCurrent() || !live.current) throw new Error("Wallet changed.");
       await recovery.prepare(prepared, isCurrent);
-      if (isCurrent() && live.current) { setPending(preparedPending(prepared)); setPendingKey(key); }
+      if (isCurrent() && live.current) {
+        setPending(preparedPending(prepared));
+        setPendingKey(key);
+      }
     };
     if (kind === "delivery") await wallet.runOfferKeysOperation(order.seller.context, order.seller.publicKey, (keys, session, current) => prepare(session, current, keys));
     else await wallet.runOperation(prepare);
     if (kind === "delivery") setNotice("Delivery prepared. Continue to publication.");
-    return { pending: await deliverySession.current.restore(key), key };
+    return {pending: await deliverySession.current.restore(key), key};
   }
+
   async function clearPublished(records: ChainRecord[]) {
     if (!order) return false;
     const key = pendingKey || recoveryId(order, "delivery", "0", account);
     const published = records.find(row => pending ? row.turn === pending.record.turn && row.commitment === pending.recordHash : row.turn === "0");
     if (!published || !await recovery.cleanupConfirmed(key, published.commitment)) return false;
-    if (live.current) { setPending(undefined); setHasSaved(false); setText(""); setComposer(false); deliverySession.current.clear(); }
+    if (live.current) {
+      setPending(undefined);
+      setHasSaved(false);
+      setText("");
+      setComposer(false);
+      deliverySession.current.clear();
+    }
     return true;
   }
+
   async function uploadDelivery(key = pendingKey) {
     let p = await recovery.restore(key);
     const current = () => live.current && !wallet.session?.locked;
@@ -108,6 +195,7 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
     if (p.progress === "upload-uncertain") throw new Error("Upload status is uncertain. Keep this draft and try again.");
     setPending(p);
   }
+
   function approveDelivery(selfPay: boolean, router?: string) {
     if (!pending || !order || !operation?.action || !wallet.session?.authorizeSeller) throw new Error("Prepare the delivery again.");
     releaseApproval();
@@ -116,36 +204,63 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
     const tx = operation.transaction;
     if (selfPay && (!tx || BigInt(tx.gas) > DELIVERY_GAS_BOUND || BigInt(tx.balance) < DELIVERY_GAS_BOUND * BigInt(calls.length) * BigInt(tx.maxFeePerGas))) throw new Error("Not enough MON for the reviewed delivery budget, or the fee estimate changed. Review again.");
     if (!selfPay && !router) throw new Error("Sponsored delivery is unavailable. Review the fee options again.");
-    deliveryApproval.current = wallet.session.authorizeSeller({ account, contract: order.deployment.contract, calls, payment: selfPay ? { kind: "self", nonce: tx!.nonce, gas: DELIVERY_GAS_BOUND, maxFeePerGas: BigInt(tx!.maxFeePerGas) } : { kind: "sponsored", router: router! } });
+    deliveryApproval.current = wallet.session.authorizeSeller({
+      account,
+      contract: order.deployment.contract,
+      calls,
+      payment: selfPay ? {
+        kind: "self",
+        nonce: tx!.nonce,
+        gas: DELIVERY_GAS_BOUND,
+        maxFeePerGas: BigInt(tx!.maxFeePerGas)
+      } : {kind: "sponsored", router: router!}
+    });
     deliverySelfPay.current = selfPay;
   }
+
   async function continueDelivery(automaticallyPublish = false, prepared = pending, key = pendingKey, reviewOnly = false) {
     if (!prepared || !service || !order) throw new Error("Unlock the saved draft first.");
     if ((await journal.list(account)).some(o => o.orderId === view.orderId && o.deployment.chainId === order.deployment.chainId && o.deployment.contract.toLowerCase() === order.deployment.contract.toLowerCase() && o.progress === "checking")) throw new Error("Check the pending transaction before continuing this draft.");
     let p = await recovery.restore(key);
     if (canonical(p.record.order) !== canonical(order) || p.record.sender !== account) throw new Error("Draft belongs to another order or wallet.");
     if (!reviewOnly) await uploadDelivery(key);
-    p = await recovery.restore(key); setPending(p);
+    p = await recovery.restore(key);
+    setPending(p);
     const fresh = await api.request<OrderView>(`/orders/${view.orderId}`);
     const existing = await api.request<Page<ChainRecord>>(`/orders/${view.orderId}/records?after=${BigInt(p.record.turn) - 1n}&limit=1`);
     if (existing.items.some(row => row.turn === p.record.turn && row.commitment === p.recordHash)) {
       const ops = await journal.list(account);
       for (const op of ops.filter(o => o.orderId === view.orderId && o.progress === "checking")) {
         const a = op.action;
-        if (a && "reference" in a && JSON.stringify(a.reference) === JSON.stringify(reference(p.record))) setOperation(await journal.save({ ...op, progress: "finalized", transaction: undefined }));
+        if (a && "reference" in a && JSON.stringify(a.reference) === JSON.stringify(reference(p.record))) setOperation(await journal.save({
+          ...op,
+          progress: "finalized",
+          transaction: undefined
+        }));
       }
-      await clearPublished(existing.items); setRows(existing.items); setNotice("This exact content is already published and finalized."); await refresh(); return;
+      await clearPublished(existing.items);
+      setRows(existing.items);
+      setNotice("This exact content is already published and finalized.");
+      await refresh();
+      return;
     }
     if (p.record.kind === "message") {
       if (BigInt(fresh.order.turn) + 1n !== BigInt(p.record.turn)) throw new Error("The negotiation turn changed. This draft cannot be posted to another turn.");
       if (!fresh.eligibility.openDispute && !fresh.eligibility.reply) throw new Error("This message can no longer be sent. Refresh the order.");
-      await prepareAction(fresh.eligibility.openDispute ? { kind: "openDispute", orderId: view.orderId, reference: reference(p.record) } : { kind: "replyToDispute", orderId: view.orderId, expectedTurn: p.record.turn, reference: reference(p.record) });
-      if (live.current) { setPending(undefined); deliverySession.current.clear(); }
+      await prepareAction(fresh.eligibility.openDispute ? {
+        kind: "openDispute",
+        orderId: view.orderId,
+        reference: reference(p.record)
+      } : {kind: "replyToDispute", orderId: view.orderId, expectedTurn: p.record.turn, reference: reference(p.record)});
+      if (live.current) {
+        setPending(undefined);
+        deliverySession.current.clear();
+      }
       return;
     }
     if (fresh.order.state === 1) {
       if (p.progress === "uploaded") await recovery.update(key, "tx1-pending");
-      await prepareAction({ kind: "reserveDelivery", orderId: view.orderId });
+      await prepareAction({kind: "reserveDelivery", orderId: view.orderId});
     } else if (fresh.order.state === 2) {
       let hash = p.tx1;
       const ops = await journal.list(account);
@@ -153,54 +268,96 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
       if (!hash) {
         let after: string | null = null;
         do {
-          const page: Page<{ name: string; transactionHash: string }> = await api.request(`/orders/${view.orderId}/history${after ? `?after=${after}` : ""}`);
-          hash = page.items.find(row => row.name === "DeliveryReserved")?.transactionHash ?? null; after = page.nextCursor;
+          const page: Page<{
+            name: string;
+            transactionHash: string
+          }> = await api.request(`/orders/${view.orderId}/history${after ? `?after=${after}` : ""}`);
+          hash = page.items.find(row => row.name === "DeliveryReserved")?.transactionHash ?? null;
+          after = page.nextCursor;
         } while (!hash && after);
       }
       if (!hash) throw new Error("Reservation is finalized. Waiting for its transaction hash to sync; keep this draft and retry.");
-      const check = await api.request<{ eligible: boolean; reason: string }>(`/orders/${view.orderId}/publication-check`, { reservationTransaction: hash });
+      const check = await api.request<{
+        eligible: boolean;
+        reason: string
+      }>(`/orders/${view.orderId}/publication-check`, {reservationTransaction: hash});
       if (!check.eligible) throw new Error(`Delivery cannot be published: ${check.reason}. Check refund eligibility.`);
       for (const op of ops.filter(o => o.orderId === view.orderId && o.progress === "checking" && o.action?.kind === "reserveDelivery")) {
-        await journal.save({ ...op, activeHash: hash, progress: "finalized", transaction: undefined });
+        await journal.save({...op, activeHash: hash, progress: "finalized", transaction: undefined});
       }
       const reviewStart = Math.max(Number(fresh.order.terms.eventEnd), Math.floor(Date.now() / 1000), fresh.block.timestamp);
       if ((reviewStart + Number(fresh.order.terms.reviewWindow)) * 1000 >= Date.parse(p.record.expiresAt)) throw new Error("Delivery no longer covers the promised review period.");
-      if (["uploaded", "tx1-pending"].includes(p.progress)) { await recovery.update(key, "tx1-pending", hash); await recovery.update(key, "tx1-finalized"); }
+      if (["uploaded", "tx1-pending"].includes(p.progress)) {
+        await recovery.update(key, "tx1-pending", hash);
+        await recovery.update(key, "tx1-finalized");
+      }
       p = await recovery.restore(key);
       if (p.progress === "tx1-finalized") await recovery.update(key, "tx2-pending");
-      await prepareAction({ kind: "publishDelivery", orderId: view.orderId, reference: reference(p.record), reservationTransaction: hash });
+      await prepareAction({
+        kind: "publishDelivery",
+        orderId: view.orderId,
+        reference: reference(p.record),
+        reservationTransaction: hash
+      });
       setAutoPublish(automaticallyPublish && (!builtin || !!deliveryApproval.current));
       setNotice(builtin && deliveryApproval.current ? "Reservation confirmed. Publishing your delivery..." : "Reservation finalized. Review publication before the fixed deadline.");
     } else throw new Error("This draft cannot be published in the current order state. Check refund eligibility.");
     setPending(await recovery.restore(key));
   }
+
   async function finalized() {
     await refresh();
     if (operation?.action?.kind === "reserveDelivery" && pending) await continueDelivery(true);
     else {
-      const r = await api.request<Page<ChainRecord>>(`/orders/${view.orderId}/records`); setRows(r.items); setNextCursor(r.nextCursor);
-       if (operation?.action?.kind === "openDispute" || operation?.action?.kind === "replyToDispute") { setMessageReviewOpen(false); setNotice("Message sent. The order history is updating."); }
-       else if (operation?.action?.kind === "approveArbitrationFee") { setArbitrationReviewOpen(false); setOperation(undefined); setNotice("Fee token approved. Continue the arbitration request."); }
-       else if (arbitrationOperation) { setArbitrationReviewOpen(false); setNotice("Arbitration action confirmed. The order is updating."); }
-      else if (operation?.action?.kind === "publishDelivery") {
+      const r = await api.request<Page<ChainRecord>>(`/orders/${view.orderId}/records`);
+      setRows(r.items);
+      setNextCursor(r.nextCursor);
+      if (operation?.action?.kind === "openDispute" || operation?.action?.kind === "replyToDispute") {
+        setMessageReviewOpen(false);
+        setNotice("Message sent. The order history is updating.");
+      } else if (operation?.action?.kind === "approveArbitrationFee") {
+        setArbitrationReviewOpen(false);
+        setOperation(undefined);
+        setNotice("Fee token approved. Continue the arbitration request.");
+      } else if (arbitrationOperation) {
+        setArbitrationReviewOpen(false);
+        setNotice("Arbitration action confirmed. The order is updating.");
+      } else if (operation?.action?.kind === "publishDelivery") {
         releaseApproval();
         if (await clearPublished(r.items)) setNotice("Content published and finalized. Temporary draft cleared.");
         else setNotice("Transaction finalized. Publication history is syncing; keep the draft until confirmed.");
       }
     }
   }
-  useEffect(() => { if (!task.busy && pending && rows.some(row => row.turn === pending.record.turn && row.commitment === pending.recordHash)) void clearPublished(rows).catch(() => {}); }, [rows, pending, task.busy]);
+
+  useEffect(() => {
+    if (!task.busy && pending && rows.some(row => row.turn === pending.record.turn && row.commitment === pending.recordHash)) void clearPublished(rows).catch(() => {
+    });
+  }, [rows, pending, task.busy]);
+
   async function open(row: ChainRecord) {
     if (!order || !service) return;
     const role = account === view.order.buyer ? "buyer" : "seller";
-    const inspect = async (privateKey: Uint8Array, isCurrent: () => boolean) => openDelivery({ record: deliveryRecord(row, order), expectedRecordHash: row.commitment, order, role, privateKey, services: [storageService(await api.read(`/storage-service?id=${row.reference.serviceId}`))], isCurrent });
+    const inspect = async (privateKey: Uint8Array, isCurrent: () => boolean) => openDelivery({
+      record: deliveryRecord(row, order),
+      expectedRecordHash: row.commitment,
+      order,
+      role,
+      privateKey,
+      services: [storageService(await api.read(`/storage-service?id=${row.reference.serviceId}`))],
+      isCurrent
+    });
     const result = role === "seller" ? await wallet.runOfferKeysOperation(order.seller.context, order.seller.publicKey, (keys, _session, current) => inspect(keys.encryptionPrivateKey, current)) : await wallet.runOperation(async (session, isCurrent) => {
       const identity = await restoreReceiving(order[role].context, session, isCurrent, order[role].publicKey);
-      try { return await inspect(identity.privateKey, isCurrent); }
-      finally { identity.privateKey.fill(0); }
+      try {
+        return await inspect(identity.privateKey, isCurrent);
+      } finally {
+        identity.privateKey.fill(0);
+      }
     });
-    if (live.current) setOpened(previous => ({ ...previous, [row.turn]: result }));
+    if (live.current) setOpened(previous => ({...previous, [row.turn]: result}));
   }
+
   const messageOperation = operation && (operation.action?.kind === "openDispute" || operation.action?.kind === "replyToDispute") ? operation : undefined;
   const arbitrationOperation = operation && ["requestArbitration", "approveArbitrationFee", "submitArbitrationEvidence", "requestArbitrationEvidence", "resolveArbitration"].includes(operation.action?.kind ?? "") ? operation : undefined;
   const deliveryOperation = operation && !messageOperation && !arbitrationOperation ? operation : undefined;
@@ -213,63 +370,181 @@ export function Fulfillment({ view, refresh, actions, onAcceptDelivery, renderSu
   const title = view.order.state <= 2 ? view.order.state === 2 ? "Prepare delivery again" : "Prepare delivery" : view.eligibility.openDispute ? "Report a problem" : "Reply";
   const delivery = rows.find(row => row.turn === "0");
   const canReportProblem = role === "buyer" && !!view.eligibility.openDispute && !hasUnfinished && !messageTransactionPending;
-  const controls = <>{participant && (delivery || canReportProblem) && <Button icon={ButtonEye} disabled={task.busy || wallet.busy} onClick={() => { setDeliveryDialogOpen(true); if (delivery && !opened["0"]) void task.run(() => open(delivery)); }}>Open delivery</Button>}    {role !== "seller" && actions}
-    {hasUnfinished && !(deliveryOperation && deliveryOperation.progress !== "finalized") && <div className="card unfinished-content"><div><h3>You have an unfinished {unfinishedKind}</h3><p>Continue from where you left off.</p></div><Button icon={ArrowRight} disabled={task.busy} onClick={() => void task.run(() => continueDelivery(false, pending, pendingKey, builtin))}>Retry publication</Button></div>}
-    {canCompose && !hasUnfinished && !canReportProblem && <Button icon={view.eligibility.reply ? MessageSquare : ButtonSave} disabled={task.busy} onClick={() => { setComposer(true); setReviewing(false); if (contentPublished) setPending(undefined); }}>{title}</Button>}
+  const controls = <>{participant && (delivery || canReportProblem) &&
+      <Button icon={ButtonEye} disabled={task.busy || wallet.busy} onClick={() => {
+        setDeliveryDialogOpen(true);
+        if (delivery && !opened["0"]) void task.run(() => open(delivery));
+      }}>Open delivery</Button>} {role !== "seller" && actions}
+    {hasUnfinished && !(deliveryOperation && deliveryOperation.progress !== "finalized") &&
+        <div className="card unfinished-content">
+            <div><h3>You have an unfinished {unfinishedKind}</h3><p>Continue from where you left off.</p></div>
+            <Button icon={ArrowRight} disabled={task.busy}
+                    onClick={() => void task.run(() => continueDelivery(false, pending, pendingKey, builtin))}>Retry
+                publication</Button></div>}
+    {canCompose && !hasUnfinished && !canReportProblem &&
+        <Button icon={view.eligibility.reply ? MessageSquare : ButtonSave} disabled={task.busy} onClick={() => {
+          setComposer(true);
+          setReviewing(false);
+          if (contentPublished) setPending(undefined);
+        }}>{title}</Button>}
 
 
     {role === "seller" && actions}
-    {(view.assignment || view.eligibility.requestArbitration) && role !== "arbitrator" && <Button icon={ButtonEye} variant="secondary" onClick={() => setCaseOpen(!caseOpen)}>{caseOpen ? "Hide case" : view.assignment ? "View case" : "Explore arbitration"}</Button>}</>;
-  return <section className={"lifecycle order-content " + (role ?? (account === view.order.seller ? "seller" : "buyer")) + "-order-workspace"}>{renderSummary ? renderSummary(controls) : <div className="order-card-actions">{controls}</div>}{role === "seller" && <SellerDeliveryProgress state={view.order.state} canceled={view.canceled} />}{!deliveryDialogOpen && !deliveryReviewOpen && <Feedback {...task} />}{notice && <p role="status">{notice}</p>}
-    {!order && !task.busy && <Button icon={ButtonRefreshCw} onClick={() => void task.run(initialize)}>Retry delivery loading</Button>}
+    {(view.assignment || view.eligibility.requestArbitration) && role !== "arbitrator" &&
+        <Button icon={ButtonEye} variant="secondary"
+                onClick={() => setCaseOpen(!caseOpen)}>{caseOpen ? "Hide case" : view.assignment ? "View case" : "Explore arbitration"}</Button>}</>;
+  return <section
+    className={"lifecycle order-content " + (role ?? (account === view.order.seller ? "seller" : "buyer")) + "-order-workspace"}>{renderSummary ? renderSummary(controls) :
+    <div className="order-card-actions">{controls}</div>}{role === "seller" &&
+      <SellerDeliveryProgress state={view.order.state}
+                              canceled={view.canceled}/>}{!deliveryDialogOpen && !deliveryReviewOpen &&
+      <Feedback {...task} />}{notice && <p role="status">{notice}</p>}
+    {!order && !task.busy &&
+        <Button icon={ButtonRefreshCw} onClick={() => void task.run(initialize)}>Retry delivery loading</Button>}
     {deliveryDialogOpen && <OrderDialog title="Delivery" onClose={() => setDeliveryDialogOpen(false)}>
-      {opened["0"] ? <div className="order-delivery-content"><p className="verified-content"><Check size={16} />Content verified</p><p className="description">{opened["0"].payload.text}</p>{opened["0"].payload.tickets.map(t => <p className="delivery-ticket" key={t.row}>{t.ticket}</p>)}</div> : <p className="muted">{delivery ? task.busy ? "Opening delivery..." : "Delivery could not be opened. Try again or report a problem." : "Delivery content has not loaded yet. Refresh the order or report a problem."}</p>}
-      {delivery && !opened["0"] && !task.busy && <Button icon={ButtonEye} variant="secondary" disabled={wallet.busy} onClick={() => void task.run(() => open(delivery))}>Try opening again</Button>}
-      <Feedback {...task} />
-      <div className="dialog-actions order-delivery-dialog-actions">
-        {canReportProblem && <Button icon={AlertCircle} variant="secondary" disabled={task.busy} onClick={() => { setDeliveryDialogOpen(false); setComposer(true); setReviewing(false); if (contentPublished) setPending(undefined); }}>Report a problem</Button>}
-        {opened["0"] && onAcceptDelivery && <Button icon={Check} disabled={task.busy || wallet.busy} onClick={() => { setDeliveryDialogOpen(false); onAcceptDelivery(); }}>Accept delivery</Button>}
-      </div>
-    </OrderDialog>}
-    {participant && (rows.some(row => row.turn !== "0") || [4, 5].includes(view.order.state) || (messageOperation && messageOperation.progress !== "finalized")) && <section className="order-conversation"><h2>Conversation</h2>{messageOperation && messageOperation.progress !== "finalized" && !messageReviewOpen && <div className="card"><p>{messageOperation.progress === "checking" ? "Message confirmation is pending." : messageOperation.progress === "reverted" ? "The message was not sent." : "Your message is ready to send."}</p><Button icon={ArrowRight} variant="secondary" onClick={() => setMessageReviewOpen(true)}>{messageOperation.progress === "checking" ? "Check message status" : "Continue sending"}</Button></div>}{rows.filter(row => row.turn !== "0").map(row => <article className="card" key={row.turn}><h3>{row.sender === account ? "You" : row.sender === view.order.buyer ? "Buyer" : "Seller"} - Message {row.turn}</h3>{opened[row.turn] ? <><p className="description">{opened[row.turn]!.payload.text}</p>{opened[row.turn]!.payload.tickets.map(t => <p key={t.row}>{t.ticket}</p>)}</> : <Button icon={ButtonEye} variant="secondary" disabled={task.busy || wallet.busy} onClick={() => void task.run(() => open(row))}>Open message</Button>}</article>)}</section>}
-    {nextCursor && <Button icon={ButtonEye} variant="secondary" onClick={() => void task.run(async () => { const p = await api.request<Page<ChainRecord>>('/orders/' + view.orderId + '/records?after=' + nextCursor); setRows(r => [...r, ...p.items]); setNextCursor(p.nextCursor); })}>Load more messages</Button>}
-    {((composer && canCompose) || (messageReviewOpen && messageOperation && messageOperation.progress !== "finalized")) && <OrderDialog title={messageReviewOpen && messageOperation ? messageOperation.action?.kind === "openDispute" ? "Send problem report" : "Send reply" : title} onClose={() => { if (!task.busy) { setComposer(false); setMessageReviewOpen(false); } }}>
-      {messageReviewOpen && messageOperation ? <><TransactionPanel key={messageOperation.id} record={messageOperation} onChange={setOperation} onFinalized={finalized} onRetry={() => prepareAction(messageOperation.action!)} compactReview /><Feedback {...task} /></> : <>
-      <ol className="order-compose-steps" aria-label="Content steps">
-        <li className={!reviewing ? "current" : ""}>1. Prepare content</li>
-        <li className={reviewing ? "current" : ""}>2. Review</li>
-        <li>3. Send</li>
-      </ol>
-      {!reviewing ? <>
-        <label>{isDelivery ? "Delivery content" : "Message"}<textarea value={text} maxLength={65536} onChange={e => setText(e.target.value)} /></label>
-        {services.length > 1 && <label>Storage for new content<select value={service?.id} onChange={e => void task.run(async () => setService(storageService(await api.read('/storage-service?id=' + e.target.value + '&prepare=true'))))}>{services.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>}
-        <Button icon={ArrowRight} disabled={!text.trim() || task.busy} onClick={() => {
-          if (builtin && isDelivery) void task.run(async () => { const prepared = await create(); await continueDelivery(false, prepared.pending, prepared.key, true); setComposer(false); setHasSaved(true); });
-          else setReviewing(true);
-        }}>Review content</Button>
-      </> : <>
-        <div className="card"><p className="description">{text}</p></div>
-        <p>{isDelivery ? view.order.state === 2 ? "The order is already reserved. Publish before the original deadline; it cannot be extended." : "Sending requires two transactions: reserve delivery, then publish it before the deadline." : view.eligibility.openDispute ? "Sending this message opens a dispute and pauses the normal payout. The seller will have a response deadline." : "Sending your response starts the other participant's response window."}</p>
-        <p>Content is encrypted before upload. Your wallet may ask you to restore your encryption keys.</p>
-        <div className="order-actions">
-          <Button icon={ButtonSave} variant="secondary" disabled={task.busy} onClick={() => setReviewing(false)}>Edit content</Button>
-          <Button icon={ButtonLockKeyhole} disabled={task.busy || wallet.busy} onClick={() => void task.run(async () => { const prepared = await create(); await continueDelivery(false, prepared.pending, prepared.key); setComposer(false); setText(""); if (prepared.pending.record.kind === "delivery") setHasSaved(true); else setMessageReviewOpen(true); })}>{isDelivery ? "Send delivery" : "Continue to transaction"}</Button>
+      {opened["0"] ?
+        <div className="order-delivery-content"><p className="verified-content"><Check size={16}/>Content verified</p><p
+          className="description">{opened["0"].payload.text}</p>{opened["0"].payload.tickets.map(t => <p
+          className="delivery-ticket" key={t.row}>{t.ticket}</p>)}</div> : <p
+          className="muted">{delivery ? task.busy ? "Opening delivery..." : "Delivery could not be opened. Try again or report a problem." : "Delivery content has not loaded yet. Refresh the order or report a problem."}</p>}
+      {delivery && !opened["0"] && !task.busy && <Button icon={ButtonEye} variant="secondary" disabled={wallet.busy}
+                                                         onClick={() => void task.run(() => open(delivery))}>Try opening
+          again</Button>}
+        <Feedback {...task} />
+        <div className="dialog-actions order-delivery-dialog-actions">
+          {canReportProblem && <Button icon={AlertCircle} variant="secondary" disabled={task.busy} onClick={() => {
+            setDeliveryDialogOpen(false);
+            setComposer(true);
+            setReviewing(false);
+            if (contentPublished) setPending(undefined);
+          }}>Report a problem</Button>}
+          {opened["0"] && onAcceptDelivery && <Button icon={Check} disabled={task.busy || wallet.busy} onClick={() => {
+            setDeliveryDialogOpen(false);
+            onAcceptDelivery();
+          }}>Accept delivery</Button>}
         </div>
-      </>}
-      <Feedback {...task} /></>}
     </OrderDialog>}
-    {renderHistory?.(operation?.progress === "finalized" ? <TransactionPanel record={operation} onChange={setOperation} /> : null)}
-    {deliveryOperation && deliveryOperation.progress !== "finalized" && <>{!deliveryReviewOpen && <section className="order-pending"><h2>Delivery processing</h2><p>{deliveryOperation.progress === "checking" ? "Delivery transaction confirmation is pending." : deliveryOperation.progress === "reverted" ? "The delivery transaction failed. Review it to try again." : "Your delivery transaction is ready to send."}</p><Button icon={ArrowRight} variant="secondary" onClick={() => setDeliveryReviewOpen(true)}>{deliveryOperation.progress === "checking" ? "Check delivery status" : "Review delivery transaction"}</Button></section>}<OrderDialog open={deliveryReviewOpen} title="Delivery processing" onClose={() => { if (!task.busy) setDeliveryReviewOpen(false); }}><TransactionPanel key={deliveryOperation.id} record={deliveryOperation} onChange={setOperation} onFinalized={finalized} autoSubmit={autoPublish} compactReview
-        singleApproval={builtin && !!pending}
-        confirmLabel={builtin && pending ? "Send delivery" : undefined}
-        summary={builtin && pending ? <><p className="description">{pending.opening.payload.text}</p><p>{deliveryOperation.action?.kind === "reserveDelivery" ? "Reserve and publish this encrypted delivery automatically." : "Publish this encrypted delivery before the original deadline."}</p><p>Wallet: <span className="address">{account}</span></p>{pending.progress === "prepared" && deliveryOperation.progress === "review" && !deliveryOperation.relayNonce && <Button variant="secondary" onClick={() => { releaseApproval(); setDeliveryReviewOpen(false); setComposer(true); setReviewing(false); }}>Edit content</Button>}</> : undefined}
-        maximumFee={builtin && pending && deliveryOperation.transaction ? DELIVERY_GAS_BOUND * BigInt(deliveryOperation.action?.kind === "reserveDelivery" ? 2 : 1) * BigInt(deliveryOperation.transaction.maxFeePerGas) : undefined}
-        onApprove={builtin && pending ? approveDelivery : undefined}
-        beforeSubmit={builtin && pending ? () => uploadDelivery() : undefined}
-        onSubmissionError={releaseApproval}
-        onRetry={pending ? async () => { releaseApproval(); await continueDelivery(false, pending, pendingKey, builtin); } : undefined} /><Feedback {...task} /></OrderDialog></>}
-    {arbitrationOperation && arbitrationOperation.progress !== "finalized" && <>{!arbitrationReviewOpen && <section className="order-pending"><h2>Arbitration transaction</h2><p>{arbitrationOperation.progress === "checking" ? "Confirmation is pending." : arbitrationOperation.progress === "reverted" ? "The transaction failed. Review it to try again." : "Review the prepared action before confirming."}</p><Button icon={ArrowRight} variant="secondary" onClick={() => setArbitrationReviewOpen(true)}>{arbitrationOperation.progress === "checking" ? "Check transaction status" : "Review transaction"}</Button></section>}{arbitrationReviewOpen && <OrderDialog title="Arbitration transaction" onClose={() => { if (!task.busy) setArbitrationReviewOpen(false); }}><TransactionPanel key={arbitrationOperation.id} record={arbitrationOperation} onChange={setOperation} onFinalized={finalized} onRetry={() => prepareAction(arbitrationOperation.action!)} compactReview /><Feedback {...task} /></OrderDialog>}</>}
-    {caseOpen && (view.assignment || view.eligibility.requestArbitration) && order && service && <section className="order-case"><h2>Arbitration case</h2><p>{view.assignment ? "Review evidence, requests and the assigned arbitrator." : "If you cannot reach an agreement, you can ask an independent arbitrator to decide."}</p>{caseOpen && <Arbitration key={view.assignment?.revision ?? "entry"} view={view} order={order} service={service} prepareAction={prepareAction} />}</section>}
+    {participant && (rows.some(row => row.turn !== "0") || [4, 5].includes(view.order.state) || (messageOperation && messageOperation.progress !== "finalized")) &&
+        <section className="order-conversation">
+            <h2>Conversation</h2>{messageOperation && messageOperation.progress !== "finalized" && !messageReviewOpen &&
+            <div className="card">
+                <p>{messageOperation.progress === "checking" ? "Message confirmation is pending." : messageOperation.progress === "reverted" ? "The message was not sent." : "Your message is ready to send."}</p>
+                <Button icon={ArrowRight} variant="secondary"
+                        onClick={() => setMessageReviewOpen(true)}>{messageOperation.progress === "checking" ? "Check message status" : "Continue sending"}</Button>
+            </div>}{rows.filter(row => row.turn !== "0").map(row => <article className="card" key={row.turn}>
+          <h3>{row.sender === account ? "You" : row.sender === view.order.buyer ? "Buyer" : "Seller"} -
+            Message {row.turn}</h3>{opened[row.turn] ? <><p
+            className="description">{opened[row.turn]!.payload.text}</p>{opened[row.turn]!.payload.tickets.map(t => <p
+            key={t.row}>{t.ticket}</p>)}</> :
+          <Button icon={ButtonEye} variant="secondary" disabled={task.busy || wallet.busy}
+                  onClick={() => void task.run(() => open(row))}>Open message</Button>}</article>)}</section>}
+    {nextCursor && <Button icon={ButtonEye} variant="secondary" onClick={() => void task.run(async () => {
+      const p = await api.request<Page<ChainRecord>>('/orders/' + view.orderId + '/records?after=' + nextCursor);
+      setRows(r => [...r, ...p.items]);
+      setNextCursor(p.nextCursor);
+    })}>Load more messages</Button>}
+    {((composer && canCompose) || (messageReviewOpen && messageOperation && messageOperation.progress !== "finalized")) &&
+        <OrderDialog
+            title={messageReviewOpen && messageOperation ? messageOperation.action?.kind === "openDispute" ? "Send problem report" : "Send reply" : title}
+            onClose={() => {
+              if (!task.busy) {
+                setComposer(false);
+                setMessageReviewOpen(false);
+              }
+            }}>
+          {messageReviewOpen && messageOperation ? <><TransactionPanel key={messageOperation.id}
+                                                                       record={messageOperation} onChange={setOperation}
+                                                                       onFinalized={finalized}
+                                                                       onRetry={() => prepareAction(messageOperation.action!)}
+                                                                       compactReview/><Feedback {...task} /></> : <>
+            <ol className="order-compose-steps" aria-label="Content steps">
+              <li className={!reviewing ? "current" : ""}>1. Prepare content</li>
+              <li className={reviewing ? "current" : ""}>2. Review</li>
+              <li>3. Send</li>
+            </ol>
+            {!reviewing ? <>
+              <label>{isDelivery ? "Delivery content" : "Message"}<textarea value={text} maxLength={65536}
+                                                                            onChange={e => setText(e.target.value)}/></label>
+              {services.length > 1 && <label>Storage for new content<select value={service?.id}
+                                                                            onChange={e => void task.run(async () => setService(storageService(await api.read('/storage-service?id=' + e.target.value + '&prepare=true'))))}>{services.map(s =>
+                <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>}
+              <Button icon={ArrowRight} disabled={!text.trim() || task.busy} onClick={() => {
+                if (builtin && isDelivery) void task.run(async () => {
+                  const prepared = await create();
+                  await continueDelivery(false, prepared.pending, prepared.key, true);
+                  setComposer(false);
+                  setHasSaved(true);
+                });
+                else setReviewing(true);
+              }}>Review content</Button>
+            </> : <>
+              <div className="card"><p className="description">{text}</p></div>
+              <p>{isDelivery ? view.order.state === 2 ? "The order is already reserved. Publish before the original deadline; it cannot be extended." : "Sending requires two transactions: reserve delivery, then publish it before the deadline." : view.eligibility.openDispute ? "Sending this message opens a dispute and pauses the normal payout. The seller will have a response deadline." : "Sending your response starts the other participant's response window."}</p>
+              <p>Content is encrypted before upload. Your wallet may ask you to restore your encryption keys.</p>
+              <div className="order-actions">
+                <Button icon={ButtonSave} variant="secondary" disabled={task.busy} onClick={() => setReviewing(false)}>Edit
+                  content</Button>
+                <Button icon={ButtonLockKeyhole} disabled={task.busy || wallet.busy}
+                        onClick={() => void task.run(async () => {
+                          const prepared = await create();
+                          await continueDelivery(false, prepared.pending, prepared.key);
+                          setComposer(false);
+                          setText("");
+                          if (prepared.pending.record.kind === "delivery") setHasSaved(true); else setMessageReviewOpen(true);
+                        })}>{isDelivery ? "Send delivery" : "Continue to transaction"}</Button>
+              </div>
+            </>}
+            <Feedback {...task} /></>}
+        </OrderDialog>}
+    {renderHistory?.(operation?.progress === "finalized" ?
+      <TransactionPanel record={operation} onChange={setOperation}/> : null)}
+    {deliveryOperation && deliveryOperation.progress !== "finalized" && <>{!deliveryReviewOpen &&
+        <section className="order-pending"><h2>Delivery processing</h2>
+            <p>{deliveryOperation.progress === "checking" ? "Delivery transaction confirmation is pending." : deliveryOperation.progress === "reverted" ? "The delivery transaction failed. Review it to try again." : "Your delivery transaction is ready to send."}</p>
+            <Button icon={ArrowRight} variant="secondary"
+                    onClick={() => setDeliveryReviewOpen(true)}>{deliveryOperation.progress === "checking" ? "Check delivery status" : "Review delivery transaction"}</Button>
+        </section>}<OrderDialog open={deliveryReviewOpen} title="Delivery processing" onClose={() => {
+      if (!task.busy) setDeliveryReviewOpen(false);
+    }}><TransactionPanel key={deliveryOperation.id} record={deliveryOperation} onChange={setOperation}
+                         onFinalized={finalized} autoSubmit={autoPublish} compactReview
+                         singleApproval={builtin && !!pending}
+                         confirmLabel={builtin && pending ? "Send delivery" : undefined}
+                         summary={builtin && pending ? <><p className="description">{pending.opening.payload.text}</p>
+                           <p>{deliveryOperation.action?.kind === "reserveDelivery" ? "Reserve and publish this encrypted delivery automatically." : "Publish this encrypted delivery before the original deadline."}</p>
+                           <p>Wallet: <span className="address">{account}</span>
+                           </p>{pending.progress === "prepared" && deliveryOperation.progress === "review" && !deliveryOperation.relayNonce &&
+                                 <Button variant="secondary" onClick={() => {
+                                   releaseApproval();
+                                   setDeliveryReviewOpen(false);
+                                   setComposer(true);
+                                   setReviewing(false);
+                                 }}>Edit content</Button>}</> : undefined}
+                         maximumFee={builtin && pending && deliveryOperation.transaction ? DELIVERY_GAS_BOUND * BigInt(deliveryOperation.action?.kind === "reserveDelivery" ? 2 : 1) * BigInt(deliveryOperation.transaction.maxFeePerGas) : undefined}
+                         onApprove={builtin && pending ? approveDelivery : undefined}
+                         beforeSubmit={builtin && pending ? () => uploadDelivery() : undefined}
+                         onSubmissionError={releaseApproval}
+                         onRetry={pending ? async () => {
+                           releaseApproval();
+                           await continueDelivery(false, pending, pendingKey, builtin);
+                         } : undefined}/><Feedback {...task} /></OrderDialog></>}
+    {arbitrationOperation && arbitrationOperation.progress !== "finalized" && <>{!arbitrationReviewOpen &&
+        <section className="order-pending"><h2>Arbitration transaction</h2>
+            <p>{arbitrationOperation.progress === "checking" ? "Confirmation is pending." : arbitrationOperation.progress === "reverted" ? "The transaction failed. Review it to try again." : "Review the prepared action before confirming."}</p>
+            <Button icon={ArrowRight} variant="secondary"
+                    onClick={() => setArbitrationReviewOpen(true)}>{arbitrationOperation.progress === "checking" ? "Check transaction status" : "Review transaction"}</Button>
+        </section>}{arbitrationReviewOpen && <OrderDialog title="Arbitration transaction" onClose={() => {
+      if (!task.busy) setArbitrationReviewOpen(false);
+    }}><TransactionPanel key={arbitrationOperation.id} record={arbitrationOperation} onChange={setOperation}
+                         onFinalized={finalized} onRetry={() => prepareAction(arbitrationOperation.action!)}
+                         compactReview/><Feedback {...task} /></OrderDialog>}</>}
+    {caseOpen && (view.assignment || view.eligibility.requestArbitration) && order && service &&
+        <section className="order-case"><h2>Arbitration case</h2>
+            <p>{view.assignment ? "Review evidence, requests and the assigned arbitrator." : "If you cannot reach an agreement, you can ask an independent arbitrator to decide."}</p>{caseOpen &&
+                <Arbitration key={view.assignment?.revision ?? "entry"} view={view} order={order} service={service}
+                             prepareAction={prepareAction}/>}</section>}
   </section>;
 }
-function preparedPending(p: Awaited<ReturnType<typeof prepareDelivery>>): Pending { return { ...p, version: 1, progress: "prepared", tx1: null, tx2: null }; }
+
+function preparedPending(p: Awaited<ReturnType<typeof prepareDelivery>>): Pending {
+  return {...p, version: 1, progress: "prepared", tx1: null, tx2: null};
+}

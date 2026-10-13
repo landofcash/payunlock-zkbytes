@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTestIndexer, type TestIndexerProcessConfig } from "envio";
+import { OrderState, encode } from "../src/handlers/escrow.js";
 
 import { readFileSync } from "node:fs";
 const config = readFileSync(new URL("../config.yaml", import.meta.url), "utf8");
@@ -72,7 +73,31 @@ describe("escrow event reconstruction", () => {
       { contract: "PayUnlock", event: "EvidencePublished", srcAddress: escrow, params: { orderId: 1n, index: 1n, submitter: seller, revision: 2n, recordHash: key, evidence: { contentRef, arbitratorEnvelope: contentRef.sellerEnvelope } } },
       { contract: "PayUnlock", event: "Settled", srcAddress: escrow, params: { orderId: 1n, recipient: seller, asset: address0, amount: terms.price, state: 8n } },
     ] } } });
-    expect(await indexer.ChainOrder.getOrThrow(id)).toMatchObject({ state: 8, handoverRecorded: true, arbitrator: replacement });
+    expect(await indexer.ChainOrder.getOrThrow(id)).toMatchObject({ state: OrderState.SettledToSeller, handoverRecorded: true, arbitrator: replacement });
     expect(await indexer.ChainEvidence.getAll()).toHaveLength(2);
+  });
+  it.each(["invalid json", '{"status":1}'])("rejects invalid product data during purchase: %s", async data => {
+    const indexer = createTestIndexer();
+    await indexer.process({ chains: { 10143: { simulate: simulate.slice(0, 6) } } });
+    const productId = `10143:${escrow}:${seller}:${key}`;
+    const product = await indexer.ChainProduct.getOrThrow(productId);
+    indexer.ChainProduct.set({ ...product, data });
+
+    await expect(indexer.process({ chains: { 10143: { simulate: [simulate[6]!] } } })).rejects.toThrow();
+    expect((await indexer.ChainProduct.getOrThrow(productId)).data).toBe(data);
+  });
+  it.each(["", "invalid json"])("rejects invalid arbitration data during evidence publication: %s", async invalidAssignment => {
+    const indexer = createTestIndexer();
+    await indexer.process({ chains: { 10143: { simulate } } });
+    const order = await indexer.ChainOrder.getOrThrow(id);
+    indexer.ChainOrder.set({ ...order, assignment: invalidAssignment });
+
+    await expect(indexer.process({ chains: { 10143: { simulate: [
+      { contract: "PayUnlock", event: "EvidencePublished", srcAddress: escrow, params: { orderId: 1n, index: 1n, submitter: seller, revision: 2n, recordHash: key, evidence: { contentRef, arbitratorEnvelope: contentRef.sellerEnvelope } } },
+    ] } } })).rejects.toThrow();
+    expect(await indexer.ChainOrder.getOrThrow(id)).toMatchObject({ assignment: invalidAssignment, handoverRecorded: false });
+  });
+  it("encode serializes serviceId to number and bigints to string", () => {
+    expect(encode({ serviceId: "12", count: 100n })).toBe('{"serviceId":12,"count":"100"}');
   });
 });

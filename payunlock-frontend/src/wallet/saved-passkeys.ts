@@ -1,5 +1,5 @@
-import { getAddress } from "ethers";
-import { z } from "zod";
+import {getAddress} from "ethers";
+import {z} from "zod";
 
 export const PASSKEY_ACCOUNTS_KEY = "payunlock.passkey-accounts.v1";
 export const PASSKEY_ACCOUNTS_EVENT = "payunlock:passkey-accounts-changed";
@@ -20,16 +20,19 @@ export function savedPasskeyAccounts(): SavedPasskeyAccount[] {
       try {
         const account = AccountSchema.parse(entry);
         if (account.rpId === window.location.hostname) accounts.set(account.credentialId, account);
-      } catch { /* Ignore corrupt entries without hiding the remaining accounts. */ }
+      } catch { /* Ignore corrupt entries without hiding the remaining accounts. */
+      }
     }
     return [...accounts.values()];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 export function rememberPasskeyAccount(value: SavedPasskeyAccount): void {
   try {
     // Explicitly project public metadata; never serialize a session or secret.
-    const account = AccountSchema.parse({ address: value.address, credentialId: value.credentialId, rpId: value.rpId });
+    const account = AccountSchema.parse({address: value.address, credentialId: value.credentialId, rpId: value.rpId});
     if (account.rpId !== window.location.hostname) return;
     const previous = savedPasskeyAccounts();
     const found = previous.find(entry => entry.credentialId === account.credentialId);
@@ -37,5 +40,6 @@ export function rememberPasskeyAccount(value: SavedPasskeyAccount): void {
     const next = [...previous.filter(entry => entry.credentialId !== account.credentialId), account];
     window.localStorage.setItem(PASSKEY_ACCOUNTS_KEY, JSON.stringify(next));
     window.dispatchEvent(new Event(PASSKEY_ACCOUNTS_EVENT));
-  } catch { /* Disabled/full storage must not prevent passkey sign-in. */ }
+  } catch { /* Disabled/full storage must not prevent passkey sign-in. */
+  }
 }

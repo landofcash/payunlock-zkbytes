@@ -1,22 +1,16 @@
-import type {
-  EIP1193Provider,
-  MetamaskConnectEVM,
-} from "@metamask/connect-evm";
-import type {
-  LabWalletAdapter,
-  LabWalletSession,
-  WalletSessionEvent,
-} from "./types";
-import { WalletError } from "./errors";
-import { sendReviewedTransaction } from "./transactions";
-import { validateTokenAuthorization } from "./typed-data";
-import { walletNetwork } from "@/config/wallet";
+import type {EIP1193Provider, MetamaskConnectEVM,} from "@metamask/connect-evm";
+import type {LabWalletAdapter, LabWalletSession, WalletSessionEvent,} from "./types";
+import {WalletError} from "./errors";
+import {sendReviewedTransaction} from "./transactions";
+import {validateTokenAuthorization} from "./typed-data";
+import {walletNetwork} from "@/config/wallet";
 
 let clientPromise: Promise<MetamaskConnectEVM> | undefined;
+
 // Lazy singleton: no connection, restoration or signing work on mount/reload.
 function getClient() {
   clientPromise ??= import("@metamask/connect-evm")
-    .then(({ createEVMClient }) =>
+    .then(({createEVMClient}) =>
       createEVMClient({
         dapp: {
           name: "PayUnlock",
@@ -24,10 +18,10 @@ function getClient() {
           iconUrl: `${window.location.origin}/favicon.svg`,
         },
         api: {
-          supportedNetworks: { [walletNetwork.chainId]: walletNetwork.rpcUrl },
+          supportedNetworks: {[walletNetwork.chainId]: walletNetwork.rpcUrl},
         },
-        analytics: { enabled: false },
-        ui: { preferExtension: true, showInstallModal: false },
+        analytics: {enabled: false},
+        ui: {preferExtension: true, showInstallModal: false},
         debug: false,
       }),
     )
@@ -42,6 +36,7 @@ type MetaMaskClient = Pick<
   MetamaskConnectEVM,
   "connect" | "disconnect" | "getProvider" | "switchChain"
 >;
+
 function accountFrom(value: unknown): string {
   if (
     !Array.isArray(value) ||
@@ -70,9 +65,11 @@ export function createMetaMaskAdapter(
       let connected = true;
       let revision = 0;
       const listeners = new Set<(event: WalletSessionEvent) => void>();
+
       function emit(event: WalletSessionEvent) {
         for (const listener of listeners) listener(event);
       }
+
       function accountsChanged(accounts: unknown) {
         let next: string;
         try {
@@ -86,20 +83,24 @@ export function createMetaMaskAdapter(
         revision++;
         emit("accountsChanged");
       }
+
       function chainChanged(next: string) {
         if (!/^0x[0-9a-f]+$/i.test(next) || next === chainId) return;
         chainId = next;
         revision++;
         emit("chainChanged");
       }
+
       function disconnected() {
         connected = false;
         revision++;
         emit("disconnect");
       }
+
       provider.on("accountsChanged", accountsChanged);
       provider.on("chainChanged", chainChanged);
       provider.on("disconnect", disconnected);
+
       function dispose() {
         connected = false;
         revision++;
@@ -108,9 +109,10 @@ export function createMetaMaskAdapter(
         provider.removeListener("disconnect", disconnected);
         listeners.clear();
       }
+
       async function verifyAccount(expected: string, version: number) {
         if (!connected) throw new WalletError("disconnected");
-        const accounts = await provider.request({ method: "eth_accounts" });
+        const accounts = await provider.request({method: "eth_accounts"});
         if (!connected) throw new WalletError("disconnected");
         if (
           revision !== version ||
@@ -118,6 +120,7 @@ export function createMetaMaskAdapter(
         )
           throw new WalletError("wrong-account");
       }
+
       try {
         await verifyAccount(address, revision);
       } catch (error) {
@@ -159,8 +162,11 @@ export function createMetaMaskAdapter(
           if (!connected || chainId?.toLowerCase() !== walletNetwork.chainId) throw new WalletError("network");
           const expected = address, version = revision;
           await verifyAccount(expected, version);
-          const { domain, types, primaryType, message } = validateTokenAuthorization(request, expected);
-          const signature = await provider.request({ method: "eth_signTypedData_v4", params: [expected, JSON.stringify({ domain, types, primaryType, message })] });
+          const {domain, types, primaryType, message} = validateTokenAuthorization(request, expected);
+          const signature = await provider.request({
+            method: "eth_signTypedData_v4",
+            params: [expected, JSON.stringify({domain, types, primaryType, message})]
+          });
           await verifyAccount(expected, version);
           if (typeof signature !== "string") throw new WalletError("unsupported");
           return signature;
@@ -178,7 +184,7 @@ export function createMetaMaskAdapter(
           const chainConfiguration = {
             chainId: walletNetwork.chainId,
             chainName: walletNetwork.name,
-            nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
+            nativeCurrency: {name: "MON", symbol: "MON", decimals: 18},
             rpcUrls: [walletNetwork.rpcUrl],
             blockExplorerUrls: ["https://testnet.monadvision.com"],
           };
@@ -201,7 +207,7 @@ export function createMetaMaskAdapter(
               method: "wallet_addEthereumChain",
               params: [chainConfiguration],
             });
-            await client.switchChain({ chainId: walletNetwork.chainId });
+            await client.switchChain({chainId: walletNetwork.chainId});
           }
           const selectedChain = await provider.request({
             method: "eth_chainId",
@@ -220,4 +226,5 @@ export function createMetaMaskAdapter(
     },
   };
 }
+
 export const metamaskAdapter = createMetaMaskAdapter();
