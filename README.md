@@ -8,6 +8,7 @@
   <a href="https://payunlock.zkbytes.com"><strong>Open the live demo</strong></a> ·
   <a href="https://payunlock.zkbytes.com/discover">Explore offers</a> ·
   <a href="https://zkbytes.com">Try zkbytes</a> ·
+  <a href="#on-chain-data-powered-by-envio">Envio integration</a> ·
   <a href="#run-locally">Run locally</a>
 </p>
 
@@ -15,6 +16,7 @@
   <img src="https://img.shields.io/badge/status-testnet_preview-6D4AFF" alt="Status: testnet preview" />
   <img src="https://img.shields.io/badge/network-Monad_Testnet-836EF9" alt="Network: Monad Testnet" />
   <img src="https://img.shields.io/badge/delivery-zkbytes-A2EF72?labelColor=0E1813" alt="Encrypted delivery: zkbytes" />
+  <img src="https://img.shields.io/badge/indexing-Envio_HyperIndex-4766FF" alt="On-chain indexing: Envio HyperIndex" />
 </p>
 
 PayUnlock is a hackathon marketplace built around **on-chain escrow and encrypted delivery**. Creators publish offers, buyers pay with test MON or supported tokens, and both parties can recover their private deliveries through their wallets. The preview brings offer management, purchases, fulfillment, refunds, and dispute resolution into one app.
@@ -98,6 +100,96 @@ Refunds, payouts, and disputes follow the order's contract rules and deadlines.
 
 The separate relayer worker submits supported signed authorizations. The V5 router also accepts valid authorizations from independent relayers. PostgreSQL stores application data; indexer data uses a separate database.
 
+## On-chain data, powered by Envio
+
+**Envio powers PayUnlock's buyer purchase discovery, seller order lists, and escrow activity history.** The application uses **HyperIndex 3.12.1** to turn Monad Testnet contract events into queryable entities, with **HyperSync** as the indexing data source. The indexer is self-hosted on Railway, alongside Hasura and a dedicated PostgreSQL database. See the [deployment guide](docs/RAILWAY_DEPLOYMENT.md) for the service layout.
+
+```mermaid
+flowchart LR
+    M[Monad V5 escrow events] --> H[Envio HyperSync]
+    H --> I[HyperIndex event handlers]
+    I --> D[(Indexer PostgreSQL)]
+    D --> G[Hasura GraphQL]
+    G --> A[PayUnlock API]
+    A --> B[Buyer purchases]
+    A --> S[Seller orders]
+    A --> T[Order activity and dispute history]
+    R[Finalized Monad RPC reads] --> A
+```
+
+### Features driven by indexed data
+
+| App feature | How Envio contributes | Implementation |
+| --- | --- | --- |
+| Buyer purchases and seller orders | Query `ChainOrder` by participant and paginate order IDs; the API verifies the selected orders against finalized contract reads. | [Purchases](payunlock-frontend/src/commerce/Purchases.tsx), [Sales](payunlock-frontend/src/commerce/Sales.tsx) |
+| Order activity history | Read ordered `ChainEvent` entries, including event names, block hashes, and transaction hashes, for the order's History view. | [Order views](payunlock-frontend/src/commerce/Orders.tsx) |
+| Offer terms in the catalog | Combine `ChainProduct` with indexed configuration to present product status, price, payment-asset eligibility, and timing terms. | [Indexer query service](payunlock-backend/src/services/indexer-service.ts) |
+| Arbitration and evidence | Discover arbitrators and assigned orders; query evidence and evidence-request entities with their assignment revisions. | [Commerce API routes](payunlock-backend/src/routes/commerce.ts) |
+| Purchase transaction lookup | Retrieve the indexed `Purchased` transaction hash to help associate an existing order with its purchase. | [Indexer query service](payunlock-backend/src/services/indexer-service.ts) |
+
+Without the indexer, the application cannot retrieve these participant order lists or indexed activity histories through their normal API paths. Offer metadata can remain readable during an indexing outage, and the UI reports when order history is syncing or unavailable.
+
+### Escrow lifecycle and entity design
+
+The [indexer configuration](payunlock-indexer/config.yaml) subscribes to **26 event types** from PayUnlock's escrow contract. The current demo runs on Monad Testnet; deployment addresses and indexing parameters are defined in the configuration. It covers product configuration, purchases, delivery reservation, published records, state transitions, settlement, arbitrator configuration and replacement, evidence, fees, and platform configuration.
+
+The [GraphQL schema](payunlock-indexer/schema.graphql) defines **eight entities**:
+
+| Entity | Indexed information |
+| --- | --- |
+| `ChainProduct` | Seller, product key, current configured status, and serialized product terms and order count |
+| `ChainOrder` | Buyer, seller, payment terms, evolving escrow state, deadlines, conversation turn, and arbitration assignment |
+| `ChainRecord` | Ordered delivery/conversation references, authors, and content commitments |
+| `ChainEvidence` | Evidence references, submitters, commitments, and arbitration revisions |
+| `ChainEvidenceRequest` | Requested evidence, participants, assignment context, and advisory dates |
+| `ChainArbitrator` | Registered arbitrator configuration, public key, key version, and fee |
+| `ChainEvent` | Chronological event history with block and transaction provenance |
+| `ChainConfiguration` | Latest indexed configuration for payment assets, storage services, fees, and timing defaults |
+
+The [event handlers](payunlock-indexer/src/handlers/escrow.ts) maintain derived state across multiple events. A purchase creates a `ChainOrder` and increments the indexed product's order count. Later events update delivery deadlines, review and response windows, conversation turns, settlement state, and arbitration revisions. Evidence entries remain separately addressable instead of being overwritten when an arbitrator changes.
+
+Entity IDs include the chain ID and escrow address to separate deployments. Event IDs include block number and log index, and handlers guard against processing the same indexed event twice. Monetary values use `BigInt` and string serialization to preserve exact amounts.
+
+### Finality, privacy, and recovery
+
+Indexed results are explicitly marked **provisional**. Envio provides discovery and historical activity; the API uses finalized RPC reads to verify current financial state, participants, and action eligibility. The configuration enables `rollback_on_reorg` with a maximum reorg depth of 200 blocks. Handlers write only Envio-managed entities, keeping their writes within Envio's rollback mechanism and avoiding payment or fulfillment side effects during replay.
+
+The indexer stores public event data, content commitments, and encrypted-content references. Delivery and conversation plaintext stays in the encrypted zkbytes flow described above; indexing does not decrypt it.
+
+### Inspect the deployed data flow
+
+The [live catalog API](https://api.payunlock.zkbytes.com/v1/products/featured) returns indexed sale terms and an `indexing` object containing `status`, `indexedBlock`, `sourceBlock`, and `lastProcessedAt`. Participant order lists also report `lagBlocks` relative to the finalized RPC block.
+
+To inspect a public order list, replace `YOUR_WALLET_ADDRESS` with a lowercase wallet address that has testnet orders:
+
+```sh
+curl "https://api.payunlock.zkbytes.com/v1/public/orders?address=YOUR_WALLET_ADDRESS&role=buyer"
+```
+
+For an end-to-end demonstration:
+
+1. Make a testnet purchase and note its order ID, transaction hash, and block number.
+2. Refresh **Your purchases** and the seller's order list until that order appears.
+3. Open the order's **History** view as an authenticated participant and compare its indexed purchase event and transaction hash with the explorer.
+4. Show the Railway `payunlock-indexer` deployment and recent runtime indexing logs, together with the API's indexing progress.
+
+The frontend and API are public; Hasura and the indexer remain private Railway services. API `/ready` checks application database readiness, while the `indexing` fields report the separate indexer's availability and progress.
+
+### Indexer setup and validation
+
+Use the indexer commands in [Run locally](#run-locally). Configure `ENVIO_API_TOKEN` for HyperSync access; `pnpm indexer:setup` prepares missing local database and Hasura settings while preserving existing values. The API connects using `ENVIO_GRAPHQL_URL` and `ENVIO_HASURA_ADMIN_SECRET`, which remain server-side configuration.
+
+```sh
+# Simulated escrow lifecycle tests using Envio's test indexer.
+pnpm indexer:test
+
+# Opt-in real-chain backfill test; configure a finalized end block first.
+# Set PAYUNLOCK_LIVE_INDEXER_END_BLOCK in your local environment.
+pnpm indexer:test:live
+```
+
+The [lifecycle tests](payunlock-indexer/test/lifecycle.test.ts) cover exact amounts, repeat purchases, conversation turns, arbitrator replacement, and retained evidence. The [live backfill test](payunlock-indexer/test/live.test.ts) indexes the configured V5 deployment twice and checks that purchases, events, and records rebuild deterministically. These are available validation paths; test results and live acceptance should be recorded for the deployment being demonstrated.
+
 ## Run locally
 
 Requires **Node.js 24.11.0**, **pnpm 11.27.0**, and **Docker with Linux containers** running.
@@ -118,13 +210,14 @@ For passkeys, use [http://localhost:4320](http://localhost:4320). Passkeys are b
 pnpm --filter @payunlock/frontend dev --host localhost
 ```
 
-Start optional services separately:
+Start the relayer and indexer separately. The relayer is optional; the indexer is needed for indexed order discovery and history:
 
 ```sh
 # Sponsored V5 actions: requires a configured, funded testnet relayer.
 pnpm dev:worker
 
 # Local V5 event indexer.
+pnpm indexer:setup
 pnpm indexer:build
 pnpm indexer:start
 ```
@@ -153,6 +246,7 @@ Local checks and live testnet acceptance have separate scopes. Public deployment
 - [V5 testnet cutover](docs/V5_TESTNET_CUTOVER.md) — deployed contracts and outstanding acceptance work.
 - [Railway deployment](docs/RAILWAY_DEPLOYMENT.md) — service layout, configuration, and release checks.
 - [Contract guide](payunlock-contract/README.md) — local builds, deployment records, and ABI ownership.
+- [Envio configuration](payunlock-indexer/config.yaml), [entity schema](payunlock-indexer/schema.graphql), and [event handlers](payunlock-indexer/src/handlers/escrow.ts) — the on-chain data pipeline.
 - [USDC relayer design](docs/USDC_RELAYER_IMPLEMENTATION_PLAN.md) — sponsored payment architecture.
 
 ---
