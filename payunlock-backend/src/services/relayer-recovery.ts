@@ -1,4 +1,4 @@
-import { type Interface, keccak256, zeroPadValue } from "ethers";
+import {type Interface, keccak256, zeroPadValue} from "ethers";
 
 type ActionLog = { data: string; topics: readonly string[] };
 type ReceiptLog = ActionLog & { address: string };

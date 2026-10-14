@@ -1,4 +1,4 @@
-import { z } from "zod";
+import {z} from "zod";
 
 const httpUrl = z.url().refine((value) => URL.canParse(value) && ["http:", "https:"].includes(new URL(value).protocol));
 const csv = <T extends z.ZodType>(item: T) => z.preprocess((value) => typeof value === "string" ? value.split(",").map((entry) => entry.trim()) : value, z.array(item).min(1));
@@ -27,13 +27,24 @@ const schema = z.object({
   STORAGE_SERVICES_JSON: z.string().optional().transform((value, ctx) => {
     if (!value) return [];
     try {
-      return z.array(z.strictObject({ id: z.number().int().min(2).max(4294967295), adapter: z.literal("zkbytes-v1"), apiOrigin: httpUrl.refine(v => new URL(v).origin === v), downloadOrigin: httpUrl.refine(v => new URL(v).origin === v), maxRetentionSeconds: z.number().int().refine(n => n === 0 || n >= 31536000), offerNew: z.boolean() })).refine(rows => new Set(rows.map(row => row.id)).size === rows.length).parse(JSON.parse(value));
-    } catch { ctx.addIssue({ code: "custom", message: "Invalid storage adapter mapping" }); return z.NEVER; }
+      return z.array(z.strictObject({
+        id: z.number().int().min(2).max(4294967295),
+        adapter: z.literal("zkbytes-v1"),
+        apiOrigin: httpUrl.refine(v => new URL(v).origin === v),
+        downloadOrigin: httpUrl.refine(v => new URL(v).origin === v),
+        maxRetentionSeconds: z.number().int().refine(n => n === 0 || n >= 31536000),
+        offerNew: z.boolean()
+      })).refine(rows => new Set(rows.map(row => row.id)).size === rows.length).parse(JSON.parse(value));
+    } catch {
+      ctx.addIssue({code: "custom", message: "Invalid storage adapter mapping"});
+      return z.NEVER;
+    }
   }),
   ZKBYTES_PROFILE: z.literal("zkbytes-wallet-eip191-hkdfsha256-ed25519-x25519-hpke-v1"),
 });
 
 export type Config = z.infer<typeof schema>;
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const result = schema.safeParse(env);
   if (!result.success) {

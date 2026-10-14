@@ -3,7 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Interface, Transaction, ZeroAddress } from "ethers";
 import { createManagedSession, type BuiltInSession } from "../wallet/managed-session";
 import { prepareBuiltinPurchase, executeBuiltinPurchase, checkBuiltinPurchase, retryBuiltinPurchase } from "../commerce/builtin-purchase";
-import type { Asset, Deployment, PreparedTx } from "../commerce/client";
+import type { Action, Asset, Deployment, PreparedTx } from "../commerce/client";
+import type { buildPurchaseAuthorization } from "../commerce/token-authorization";
 import type { Operation, PurchaseJournal } from "../commerce/purchase-journal";
 
 const escrow = `0x${"22".repeat(20)}`, token = `0x${"44".repeat(20)}`, router = `0x${"55".repeat(20)}`, hash = `0x${"33".repeat(32)}`;
@@ -16,20 +17,25 @@ const journal = { save: vi.fn(async (value: Operation) => ({ ...value, version: 
 function prepared(kind: string): PreparedTx {
   return { chainId: 10143, to: kind === "approve" ? token : escrow, data: kind === "approve" ? abi.encodeFunctionData("approve", [escrow, record.configuration!.terms.price]) : abi.encodeFunctionData("purchase", [record.requestId]), value: record.configuration!.terms.token === ZeroAddress && kind === "purchase" ? record.configuration!.terms.price : "0", nonce: submitted.includes("approve") ? 1 : 0, gas: kind === "purchase" && submitted.includes("approve") ? nextGas : "100000", maxFeePerGas: kind === "purchase" && submitted.includes("approve") ? nextFee : "2", maxPriorityFeePerGas: "1", balance: asset.nativeBalance };
 }
-const api = {
-  read: vi.fn(async (path: string): Promise<any> => path === "/deployment" ? deployment : { status: "pending", transactionHash: null }),
-  request: vi.fn(async (path: string, body?: any): Promise<any> => {
-    if (path === "/transactions/prepare" || path === "/transactions/request") return prepared(body.kind);
+const apiMock = {
+  read: vi.fn(async (path: string): Promise<unknown> => path === "/deployment" ? deployment : { status: "pending", transactionHash: null }),
+  request: vi.fn(async (path: string, body?: unknown): Promise<unknown> => {
+    if (path === "/transactions/prepare" || path === "/transactions/request") return prepared((body as Action).kind);
     if (path === "/transactions/broadcast") {
       if (rejectBroadcast) throw new Error("Network unavailable");
-      expect(Transaction.from(body.raw).from!.toLowerCase()).toBe(record.account);
-      submitted.push(body.action.kind); return { hash: Transaction.from(body.raw).hash };
+      const broadcast = body as { raw: string; action: Action };
+      expect(Transaction.from(broadcast.raw).from!.toLowerCase()).toBe(record.account);
+      submitted.push(broadcast.action.kind); return { hash: Transaction.from(broadcast.raw).hash };
     }
     if (path.startsWith("/transactions/")) return { status: "finalized_success" };
     if (path.startsWith("/orders/recover/")) return recovered ? { status: "finalized", orderId: "42", order: { buyer: record.account, requestId: record.requestId, buyerReceiving: record.receiving } } : { status: "not_found" };
     if (path === "/relay/payments") { if (rejectRelay) throw new Error("Submission uncertain"); return { id: "relay-job" }; }
     throw new Error(path);
   }),
+};
+const api = {
+  read: async <T>(path: string): Promise<T> => await apiMock.read(path) as T,
+  request: async <T>(path: string, body?: unknown): Promise<T> => await apiMock.request(path, body) as T,
 };
 beforeEach(() => {
   vi.clearAllMocks(); submitted = []; changes = []; nextGas = "120000"; nextFee = "2"; rejectBroadcast = false; current = true; recovered = false; rejectRelay = false;
@@ -72,14 +78,14 @@ it("retains the signed hash when broadcasting is uncertain and does not initiate
 });
 it("stops if the wallet changes after approval and releases the purchase scope", async () => {
   record.configuration!.terms.token = token; asset.token = token;
-  const original = api.request.getMockImplementation()!;
-  api.request.mockImplementationOnce(original);
+  const original = apiMock.request.getMockImplementation()!;
+  apiMock.request.mockImplementationOnce(original);
   const plan = await prepareBuiltinPurchase(api, record, asset, "Workshop");
-  api.request.mockImplementation(async (path, body) => { const value = await original(path, body); if (path.startsWith("/transactions/") && path.includes("?token=")) current = false; return value; });
+  apiMock.request.mockImplementation(async (path, body) => { const value = await original(path, body); if (path.startsWith("/transactions/") && path.includes("?token=")) current = false; return value; });
   try {
     await expect(executeBuiltinPurchase({ api, journal, session, plan, current: () => current, onChange: value => changes.push(value) })).rejects.toThrow("Wallet locked or changed");
     expect(submitted).toEqual(["approve"]);
-  } finally { api.request.mockImplementation(original); }
+  } finally { apiMock.request.mockImplementation(original); }
   await session.signMessage("ordinary request"); expect(approvalPrompt).toHaveBeenCalledOnce();
 });
 it("sponsored checkout signs only its exact authorization and saves uncertain submission", async () => {
@@ -99,7 +105,7 @@ it("places a sponsored purchase without another wallet prompt", async () => {
   asset = { ...asset, token, symbol: "USDC", decimals: 6, authorizationProfile: { mode: "eip3009-receive", name: "USDC", version: "2" } };
   await execute();
   expect(changes.at(-1)).toMatchObject({ progress: "checking", relayJobId: "relay-job" });
-  expect(api.request.mock.calls.filter(([path]) => path === "/relay/payments")).toHaveLength(1);
+  expect(apiMock.request.mock.calls.filter(([path]) => path === "/relay/payments")).toHaveLength(1);
   expect(approvalPrompt).not.toHaveBeenCalled(); expect(submitted).toEqual([]);
 });
 it.each(["checking", "finalized"] as const)("refuses to prepare a checkout that is already %s", async progress => {
@@ -116,8 +122,8 @@ it("resubmits after a relay submission failure without changing the checkout or 
   expect(record).toMatchObject({ id: pending.id, requestId: pending.requestId, receiving: pending.receiving, account: pending.account, progress: "draft", relayNonce: undefined });
   rejectRelay = false;
   await execute();
-  const packets = api.request.mock.calls.filter(([path]) => path === "/relay/payments").map(([, body]) => body);
-  expect(packets).toHaveLength(2); expect(packets[1].intent).toEqual(packets[0].intent);
+  const packets = apiMock.request.mock.calls.filter(([path]) => path === "/relay/payments").map(([, body]) => body as Pick<ReturnType<typeof buildPurchaseAuthorization>, "intent">);
+  expect(packets).toHaveLength(2); expect(packets[1]!.intent).toEqual(packets[0]!.intent);
   expect(changes.at(-1)).toMatchObject({ progress: "checking", relayJobId: "relay-job" });
   expect(approvalPrompt).not.toHaveBeenCalled();
 });
@@ -125,7 +131,7 @@ it("recovers an already completed order instead of resetting it for retry", asyn
   const pending = { ...record, progress: "checking" as const, relayNonce: hash };
   recovered = true;
   expect(await retryBuiltinPurchase(api, journal, pending)).toMatchObject({ progress: "finalized", orderId: "42", requestId: record.requestId });
-  expect(api.request.mock.calls.some(([path]) => path === "/relay/payments")).toBe(false);
+  expect(apiMock.request.mock.calls.some(([path]) => path === "/relay/payments")).toBe(false);
 });
 it.each([{ relayJobId: "job" }, { activeHash: hash }, { action: { kind: "purchase" as const, requestId: hash, expectedTerms: hash } }])("does not reset an accepted or direct payment for sponsored retry (%#)", async extra => {
   await expect(retryBuiltinPurchase(api, journal, { ...record, progress: "checking", relayNonce: hash, ...extra })).rejects.toThrow("Check the current payment status");
