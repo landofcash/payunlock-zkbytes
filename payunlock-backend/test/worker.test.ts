@@ -55,6 +55,7 @@ it.each([false, true])("keeps rebroadcasting until the worker transaction settle
   const updates: unknown[][] = [];
   mocks.outcome.mockImplementation(async (_actor: string, request: string) => completedElsewhere && request === expired.request_id ? 1n : 0n);
   mocks.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+    sql = sql.replace(/\s+/g, " ").trim();
     if (sql.includes("pg_try_advisory_lock")) return { rows: [{ acquired: true }] };
     if (sql.startsWith("SELECT * FROM relayer_jobs")) {
       return { rows: finished() ? [] : [expired] };
